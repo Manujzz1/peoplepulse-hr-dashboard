@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 async function enterDemo(page) {
   await page.goto('/')
-  await page.getByRole('button', { name: /Continue to synthetic demo/ }).click()
+  await page.getByRole('button', { name: /Continue to demo workspace/ }).click()
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
   await expect(page.getByText(/Demo data loaded/)).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Period comparisons' })).toBeVisible()
