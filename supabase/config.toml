@@ -1,0 +1,13 @@
+# Local-only Supabase configuration for reviewing the database foundation.
+# No remote project reference or production credentials are configured.
+project_id = "peoplepulse-hr-analytics"
+
+[db]
+major_version = 15
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[auth]
+enabled = true
