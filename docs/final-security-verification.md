@@ -1,12 +1,12 @@
 ﻿# PeoplePulse production security verification
 
-Reviewed on 22 November 2026 (IST). **Production release is blocked.** This review used the cached management session and a read-only catalog query against the hosted production project. No production settings or SQL migrations were changed.
+Reviewed on 22 November 2026 (IST). **Production release is blocked.** The hosted Auth settings and catalog findings below come from the prior read-only management and catalog audit. The current local review used synthetic data and did not access the production database or archive. No production settings or SQL migrations were changed.
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
 | Hosted Auth tenant entry | Passed | Public and anonymous sign-in registration are disabled. Email confirmation is enabled. Password minimum is 8 characters, with lower and upper case letters, digits and symbols required. |
-| Production Auth redirects | PASSED | A fresh management read confirms the production origin as both Site URL and sole additional redirect. |
-| Leaked-password protection | Blocked | The read-only CLI configuration response did not expose the setting. Verify it in the hosted Auth dashboard and record the result. |
+| Production Auth redirects | PASSED | The prior read-only management check confirms the production origin as both Site URL and sole additional redirect. |
+| Leaked-password protection | ENABLED — OWNER CONFIRMED | Recorded from the release owner. |
 | Hosted schema comparison | Failed | Tables, policies, function bodies and triggers match the six applied migrations. Effective authenticated grants on all 25 public tables are broader than those explicitly defined in the migration files. |
 | Atomic imports and approval | Passed in isolated SQL | The candidate removes authenticated table staging, tracks atomic provenance, and prevents advancing unverified legacy batches. Review, approval and publish remain separate. Hosted migrations are pending. |
 | Export scope | Passed with synthetic fixtures | Generated CSV, Excel, PDF and print output contains only the selected company. Fresh account scope changes block every format. The test replaces the Auth transport with synthetic role profiles. |
@@ -31,24 +31,24 @@ Review the four files in that order. Before applying them, inventory incomplete 
 
 ## Hosted Preview assurance boundary
 
-Hosted Preview authentication is **NOT VERIFIED** by release-owner direction. The existing Vercel Preview remains protected and receives no production Supabase variables. Existing isolated PostgreSQL, synthetic Supabase Auth/Data API, unit and browser suites provide the regression evidence. They leave residual risk in the hosted browser integration, including Vercel build-time variables, redirect behavior, email recovery, and browser session restoration. Capture explicit acceptance of that residual risk in the release approval. After an approved deployment, the existing Super Admin must verify login, reload, logout and role scope in production without test-data writes before confidential use.
+Hosted Preview authentication is **NOT VERIFIED** by release-owner direction. The existing Vercel Preview remains protected and receives no production Supabase variables. Existing isolated PostgreSQL, synthetic Supabase Auth/Data API, unit and browser suites provide the regression evidence. They leave residual risk in the hosted browser integration, including Vercel build-time variables, redirect behavior, email recovery, and browser session restoration. The release owner acknowledged this residual risk. After an approved deployment, the existing Super Admin must verify login, reload, logout and role scope in production without test-data writes before confidential use.
 
 ## Production Auth approval
 
-A fresh read of hosted configuration confirms Site URL and the sole additional redirect both use `https://peoplepulse-hr-dashboard.vercel.app`. The code uses the origin as its password-reset redirect. Leaked-password protection still needs a manual check in **Authentication ? Password Security**. No hosted settings were changed in this review.
+The prior read-only management check confirms Site URL and the sole additional redirect both use `https://peoplepulse-hr-dashboard.vercel.app`. The code uses the origin as its password-reset redirect. Leaked-password protection is enabled, as confirmed by the release owner. No hosted settings were changed in this review.
 
 ## Production approval evidence
 
-Draft PR #1 remains open and unmerged. At the reviewed code commit `c0d9f0e`, CI run 7 passed 109 SQL assertions on PostgreSQL 17, the isolated Auth and Data API workflow, 162 unit tests, four browser tests, lint and build. The production domain still points to deployment `dpl_GJSaoL5pW75QmdJBYjdfoRjBwLyd` at `1a0c690`.
+Draft PR #1 remains open and unmerged. At `316104a`, [GitHub CI](https://github.com/Manujzz1/peoplepulse-hr-dashboard/actions/runs/44975970113) passed 109 SQL assertions on PostgreSQL 17, the synthetic Auth and Data API workflow, 163 unit tests, four browser tests, lint and build. The local XLSX changes pass 165 unit tests, four browser tests, lint and build. The unchanged SQL package passes 109 assertions locally with isolated PostgreSQL 18.7. There is no separate type-check script. The production domain still points to deployment `dpl_GJSaoL5pW75QmdJBYjdfoRjBwLyd` at `1a0c690`.
 
 | Gate | Status | Evidence or required action |
 | --- | --- | --- |
 | Production Auth URL configuration | PASSED | Site URL and sole additional redirect are both `https://peoplepulse-hr-dashboard.vercel.app`. |
-| Hosted password controls | NOT VERIFIED | Minimum 8 with lowercase, uppercase, digits and symbols. Leaked-password protection requires a dashboard check. Public sign-up and anonymous sign-in remain disabled, and email confirmation is enabled. |
+| Hosted password controls | PASSED | Minimum 8 with lowercase, uppercase, digits and symbols. Leaked-password protection is ENABLED — OWNER CONFIRMED. Public sign-up and anonymous sign-in remain disabled, and email confirmation is enabled. |
 | Hosted Preview authentication | NOT VERIFIED | Preview stays disconnected from production. Hosted browser integration remains a documented release risk. |
 | Independent reviewer inspection | PASSED in isolation | CI verified the scoped inspection endpoint with synthetic authenticated users. Production import enablement requires separate approval. |
 | Production catalog and migration impact | PASSED | Six baseline versions are present. Zero unpublished batches and zero over-limit allocation groups at the time of the audit. The effective Data API schemas are `public` and `graphql_public`. |
-| SQL recovery point | DEFERRED — NOT VERIFIED | The owner deferred backup and restore work during development. A usable checkpoint and independently witnessed restore remain mandatory before production SQL or full release approval. |
+| SQL recovery point | OWNER-REPORTED CAPTURE. RESTORE NOT VERIFIED | The owner reports encrypted logical capture, matching checksums and archive readability. An approved independent restore remains mandatory before production SQL or full release approval. |
 | Production permissions | FAILED | Excess authenticated grants remain until approved migration execution. The reviewed local change removes direct staging and excess privileges. |
 | Production SQL execution | REQUIRES APPROVAL | Request approval for the exact four versions below after recovery readiness. No production SQL was written. |
 | Release and real Super Admin smoke test | BLOCKED | Deployment approval follows completion of the mandatory gates. Login validation requires the account holder in an authorized browser session. |
@@ -70,4 +70,4 @@ The package does not delete employee or payroll rows. The allocation migration r
 
 Independent review needs access to the submitted content. The separate candidate `20261122015125_add_scoped_import_review.sql` adds bounded, read-only pages for unpublished atomic batches. It excludes the uploader and requires the applicable import and dataset permissions. Its dedicated role has no login, write grants, or RLS bypass. Normal dashboard and export queries retain their published-row visibility. The original three migration blobs are unchanged. The new migration must be reviewed and approved separately before production application.
 
-[Database recovery plan](database-recovery-plan.md) specifies protected capture, restore and independent verification of Auth, application data, roles, grants, policies and migration history. Recovery is **DEFERRED — NOT VERIFIED** and remains a mandatory production release requirement.
+[Database recovery plan](database-recovery-plan.md) specifies protected capture, restore and independent verification of Auth, application data, roles, grants, policies and migration history. The owner reported encrypted logical capture on 22 November 2026. Independent restore is **NOT VERIFIED** and remains a mandatory production release requirement.

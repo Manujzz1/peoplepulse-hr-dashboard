@@ -1,5 +1,6 @@
 import { MAX_IMPORT_BYTES } from './importSchemas'
-import { cellValue, makeSheet, parseCsv } from './fileParserCore'
+import { makeSheet, parseCsv } from './fileParserCore'
+import { parseXlsx } from './xlsxParser'
 
 export { parseCsv }
 
@@ -12,24 +13,7 @@ export async function parseFileContents(fileName, content) {
   }
   if (extension !== 'xlsx') throw new Error('Unsupported file type. Choose a .csv or .xlsx file.')
 
-  try {
-    const { default: ExcelJS } = await import('exceljs')
-    const workbook = new ExcelJS.Workbook()
-    const buffer = content instanceof ArrayBuffer ? content : await content.arrayBuffer()
-    await workbook.xlsx.load(buffer)
-    const sheets = workbook.worksheets.map((worksheet) => {
-      const grid = []
-      worksheet.eachRow({ includeEmpty: false }, (row) => {
-        grid.push({ rowNumber: row.number, values: row.values.slice(1).map(cellValue) })
-      })
-      return makeSheet(worksheet.name, grid)
-    })
-    if (!sheets.length) throw new Error('The workbook does not contain any worksheets.')
-    return { type: 'xlsx', sheets }
-  } catch (error) {
-    if (error instanceof Error && /workbook|worksheet|xlsx|file/i.test(error.message)) throw error
-    throw new Error('This XLSX file could not be read. Check that it is a valid Excel workbook.')
-  }
+  return parseXlsx(content instanceof ArrayBuffer ? content : await content.arrayBuffer())
 }
 
 function parseWithWorker(file, createWorker) {

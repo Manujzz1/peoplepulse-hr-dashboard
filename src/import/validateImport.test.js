@@ -185,6 +185,36 @@ describe('import validation', () => {
     await expect(parseImportFile({ name: 'large.xlsx', size: MAX_IMPORT_BYTES + 1 })).rejects.toThrow(/10 MB/i)
   })
 
+  it('preserves spreadsheet column positions when the header has blank cells', async () => {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Synthetic payroll')
+    worksheet.getCell('B1').value = 'Employee ID'
+    worksheet.getCell('D1').value = 'Gross Pay'
+    worksheet.getCell('E1').value = 'Month'
+    worksheet.getCell('B2').value = 'SYN-101'
+    worksheet.getCell('D2').value = 50000
+    worksheet.getCell('E2').value = '2025-04'
+    const file = new File([await workbook.xlsx.writeBuffer()], 'synthetic.xlsx')
+
+    const { sheets: [sheet] } = await parseImportFile(file)
+    expect(sheet.headers).toEqual([
+      { index: 0, label: 'Column 1' },
+      { index: 1, label: 'Employee ID' },
+      { index: 2, label: 'Column 3' },
+      { index: 3, label: 'Gross Pay' },
+      { index: 4, label: 'Month' },
+    ])
+    const mapping = autoMapColumns('payroll', sheet.headers)
+    expect(mapping).toMatchObject({ employeeId: 1, monthlyGrossSalary: 3, reportingMonth: 4 })
+    expect(validateMappedRows({ category: 'payroll', ...sheet, mapping }).validRows[0])
+      .toMatchObject({ employeeId: 'SYN-101', monthlyGrossSalary: 50000, reportingMonth: '2025-04' })
+  })
+
+  it('rejects a malformed file with an XLSX extension', async () => {
+    const file = new File(['Synthetic text, not an Excel workbook'], 'broken.xlsx')
+    await expect(parseImportFile(file)).rejects.toThrow(/valid Excel workbook/i)
+  })
+
   it('validates recruitment counts, offer reconciliation, status, and duplicate requisition-month keys', () => {
     const result = validateMappedRows({
       category: 'recruitment', headers: headersFor('recruitment'), mapping: mappingFor('recruitment'),

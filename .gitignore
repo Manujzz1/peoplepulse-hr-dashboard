@@ -16,6 +16,7 @@ dist-ssr
 !.env.example
 .supabase
 supabase/.temp/
+supabase/admin/bootstrap_initial_super_admin.sql
 playwright-report
 test-results
 
