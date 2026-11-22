@@ -4,6 +4,7 @@ create role peoplepulse_import_reviewer nologin noinherit nobypassrls;
 grant peoplepulse_import_reviewer to current_user;
 grant usage on schema public, private to peoplepulse_import_reviewer;
 grant execute on function private.has_company_permission(uuid, text, uuid) to peoplepulse_import_reviewer;
+revoke insert, update, delete on public.import_errors from public, anon, authenticated;
 grant select on public.import_batches, public.import_errors to peoplepulse_import_reviewer;
 
 create function private.import_review_actor()

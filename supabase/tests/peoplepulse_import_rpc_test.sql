@@ -1,7 +1,7 @@
 -- Run only on a disposable local database with the project migrations applied.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(35);
+select plan(36);
 
 insert into auth.users (id, email) values
   ('91000000-0000-4000-8000-000000000001', 'rpc-uploader@example.test'),
@@ -123,6 +123,10 @@ select throws_ok(
   '42501', null, 'Uploader cannot independently inspect own batch'
 );
 select ok(not pg_has_role('authenticated', 'peoplepulse_import_reviewer', 'MEMBER'), 'Browser role cannot assume the private reviewer role');
+select ok(
+  not has_table_privilege('authenticated', 'public.import_errors', 'insert,update,delete'),
+  'Reviewers cannot alter validation issues through the Data API'
+);
 set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000003","exp":1}';
 select throws_ok(
   $$select public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000001')$$,
