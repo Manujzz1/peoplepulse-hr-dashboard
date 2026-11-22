@@ -10,8 +10,8 @@ Reviewed on 22 November 2026 (IST). **Production release is blocked.** This revi
 | Hosted schema comparison | Failed | Tables, policies, function bodies and triggers match the six applied migrations. Effective authenticated grants on all 25 public tables are broader than those explicitly defined in the migration files. |
 | Atomic imports and approval | Passed in isolated SQL | The candidate removes authenticated table staging, tracks atomic provenance, and prevents advancing unverified legacy batches. Review, approval and publish remain separate. Hosted migrations are pending. |
 | Export scope | Passed with synthetic fixtures | Generated CSV, Excel, PDF and print output contains only the selected company. Fresh account scope changes block every format. The test replaces the Auth transport with synthetic role profiles. |
-| Vercel Preview authentication | Blocked | Both Supabase variables are Production-only. The Vercel Preview is protected, and the hosted project reports zero preview branches. No approved isolated hosted Supabase configuration was available. |
-| Reviewer inspection | BLOCKED for hosted Preview | The additional scoped review migration and UI are included in the candidate. Hosted reviewer testing needs an isolated Preview project. |
+| Vercel Preview authentication | NOT VERIFIED | Hosted authentication is intentionally outside the Preview test scope. Preview remains protected and disconnected from production. |
+| Reviewer inspection | PASSED in isolation | Scoped reviewer inspection passed SQL and synthetic Auth/Data API checks. Live import actions remain disabled. |
 | Production release or SQL execution | Requires approval | Close the failed and blocked gates, confirm a recovery point and review exact migration versions. Live import actions default to disabled. |
 
 ## Hosted database comparison
@@ -25,16 +25,13 @@ The following reviewed candidates are absent from production:
 - `20261121235346` changes allocation validation to cover staged rows while preserving their read restrictions.
 - `20261121235434` creates the public atomic import endpoint.
 - `20261122010333` adds `import_batches.atomic_submission`, the provenance trigger, the private executor and a public invoker wrapper. It removes excess grants and direct staging privileges. It blocks pre-cutover batches from advancing while preserving historical Published rows and audit records.
+- `20261122015125` adds the scoped read-only reviewer interface and revokes direct writes to import validation issues. The public invoker wrapper delegates to a no-login role subject to dedicated RLS policies, including the independent reviewer and dataset-read checks.
 
-Review the three files in that order. Before applying them, inventory incomplete legacy batches and record the current backup or point-in-time recovery marker. Keep `private` outside the exposed Data API schemas. Use a separately approved database change for production. Retest grants, trigger timing, approval and publication behavior, and RPC identity after an approved installation. Roll back the frontend independently. If import access needs to be stopped, keep frontend actions disabled and review a separately approved execute revoke. Retain audit events and source records during recovery.
+Review the four files in that order. Before applying them, inventory incomplete legacy batches and record the verified backup checkpoint. Keep `private` outside the exposed Data API schemas. Use a separately approved database change for production. Retest grants, trigger timing, approval and publication behavior, and RPC identity after an approved installation. Roll back the frontend independently. If import access needs to be stopped, keep frontend actions disabled and review a separately approved execute revoke. Retain audit events and source records during recovery.
 
-## Preview setup and verification
+## Hosted Preview assurance boundary
 
-1. **Approval required** to create and pay for an empty Supabase test project, or explicitly select a separately approved existing isolated project. Prefer a distinct project for full separation. A Supabase preview branch is another option only after confirming its isolation and costs. Leave the Vercel project and its deployment protection in place. [Supabase Branching](https://supabase.com/docs/guides/deployment/branching)
-2. **Approval required** to apply only the reviewed migrations and seed synthetic data on the verified test project reference. Use two synthetic organizations and controlled test identities for uploader, reviewer, approver, publisher, outsider and unassigned roles. Keep public sign-up and anonymous sign-in disabled on the test project. Provision test identities through its Auth administration screen.
-3. **Approval required** to set the test project's Auth Site URL to the exact protected release Preview origin and add only that trusted callback origin. In Vercel, scope `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to **Preview** and the branch `release/peoplepulse-auth-config`. Use the isolated pair. A test-only `VITE_ENABLE_LIVE_IMPORTS=true` requires approval on that same isolated branch scope. Leave it unset or false for Production. Verify the resulting Preview commit and keep Vercel SSO protection. [Supabase redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)
-4. In a protected Preview browser session, test password login, same-tab reload and session restoration, organization access, unauthorized and unassigned accounts, logout, and the approved reset callback. With synthetic fixtures, verify uploader self-review denial, independent review and approval, publisher-only publication, and visibility only after publishing. Verify company- and role-scoped CSV, Excel, PDF, and print. Test access removal between loading a report and exporting.
-5. No hosted project, branch, test user, redirect, or Vercel variable is created by the local and CI test scripts.
+Hosted Preview authentication is **NOT VERIFIED** by release-owner direction. The existing Vercel Preview remains protected and receives no production Supabase variables. Existing isolated PostgreSQL, synthetic Supabase Auth/Data API, unit and browser suites provide the regression evidence. They leave residual risk in the hosted browser integration, including Vercel build-time variables, redirect behavior, email recovery, and browser session restoration. Capture explicit acceptance of that residual risk in the release approval. After an approved deployment, the existing Super Admin must verify login, reload, logout and role scope in production without test-data writes before confidential use.
 
 ## Production Auth approval
 
@@ -42,18 +39,18 @@ A fresh read of hosted configuration confirms Site URL and the sole additional r
 
 ## Production approval evidence
 
-The reviewed release is `f3821ee5529b11c9591dccb25e0f8218a0553661`. Draft PR #1 remains open and unmerged, with no review threads returned. CI run 5 passed the disposable PostgreSQL 17 tests and the isolated Auth and Data API workflow. The production domain still points to deployment `dpl_GJSaoL5pW75QmdJBYjdfoRjBwLyd` at `1a0c690`.
+Draft PR #1 remains open and unmerged. At the reviewed code commit `c0d9f0e`, CI run 7 passed 109 SQL assertions on PostgreSQL 17, the isolated Auth and Data API workflow, 162 unit tests, four browser tests, lint and build. The production domain still points to deployment `dpl_GJSaoL5pW75QmdJBYjdfoRjBwLyd` at `1a0c690`.
 
 | Gate | Status | Evidence or required action |
 | --- | --- | --- |
 | Production Auth URL configuration | PASSED | Site URL and sole additional redirect are both `https://peoplepulse-hr-dashboard.vercel.app`. |
 | Hosted password controls | NOT VERIFIED | Minimum 8 with lowercase, uppercase, digits and symbols. Leaked-password protection requires a dashboard check. Public sign-up and anonymous sign-in remain disabled, and email confirmation is enabled. |
-| Isolated hosted Preview | BLOCKED | Only production is visible in project inventory. Approve an empty test project and any associated charges, isolation setup, test identities and branch-only Vercel Preview variables. Keep Preview protection enabled. |
-| Independent reviewer inspection | BLOCKED | Test the new scoped, read-only inspection against the approved isolated Preview before import enablement. |
+| Hosted Preview authentication | NOT VERIFIED | Preview stays disconnected from production. Hosted browser integration remains a documented release risk. |
+| Independent reviewer inspection | PASSED in isolation | CI verified the scoped inspection endpoint with synthetic authenticated users. Production import enablement requires separate approval. |
 | Production catalog and migration impact | PASSED | Six baseline versions are present. Zero unpublished batches and zero over-limit allocation groups at the time of the audit. The effective Data API schemas are `public` and `graphql_public`. |
 | SQL recovery point | BLOCKED | Backup inventory contains zero backups and PITR is disabled. Establish and confirm a usable recovery point, restore procedure and protected destination before requesting SQL execution approval. |
 | Production permissions | FAILED | Excess authenticated grants remain until approved migration execution. The reviewed local change removes direct staging and excess privileges. |
-| Production SQL execution | REQUIRES APPROVAL | Request approval for the exact three versions below after recovery readiness. No production SQL was written. |
+| Production SQL execution | REQUIRES APPROVAL | Request approval for the exact four versions below after recovery readiness. No production SQL was written. |
 | Release and real Super Admin smoke test | BLOCKED | Deployment approval follows completion of the mandatory gates. Login validation requires the account holder in an authorized browser session. |
 
 ### Exact production SQL package
@@ -65,8 +62,9 @@ Apply only to `moxnyczdleagujjxwncw` after separate approval. SHA-256 values are
 | `20261121235346` | `13f064c81f26062b988cc2492b1b66b90c06c0a16ceae9a466f3553a853b3eb9` |
 | `20261121235434` | `b53809fecb5c9d592822234f0b5d4742f5e242af74064328784212b81efa791a` |
 | `20261122010333` | `6eed1246da6e73f9ec41d168fb154dec259dc2badaaeecb9e34ce88a67e70a35` |
+| `20261122015125` | `066ab026f438f9ae65b328cbbd04cea4a3dcd6147574899bb56770435a5b1fb9` |
 
-The package does not delete employee or payroll rows. The allocation migration replaces a trigger and can reject newly attempted over-limit allocations. The final migration adds submission provenance and revokes direct writes from applications using the legacy staging path. Ordinary RLS-protected employee, payroll and report reads and Supabase Auth are outside those write changes. The second migration creates the endpoint before the third closes legacy writes, so keep live import actions disabled throughout the cutover. If execution stops partway, inspect installed versions before retrying and seek separate approval for a targeted RPC execute revoke or forward fix. Restore database contents only via an approved recovery procedure. Use Vercel rollback independently for the frontend.
+The package does not delete employee or payroll rows. The allocation migration replaces a trigger and can reject newly attempted over-limit allocations. The third migration adds submission provenance and revokes direct writes from applications using the legacy staging path. The fourth migration adds bounded reviewer-only SELECT policies and a no-login, no-RLS-bypass reader role. It revokes direct writes to validation issues and leaves ordinary dashboard SELECT policies intact. Ordinary RLS-protected employee, payroll and report reads and Supabase Auth are outside those write changes. The second migration creates the endpoint before the third closes legacy writes, so keep live import actions disabled throughout the cutover. If execution stops partway, inspect installed versions before retrying and seek separate approval for a targeted RPC execute revoke or forward fix. Restore database contents only via an approved recovery procedure. Use Vercel rollback independently for the frontend.
 
 ### Reviewer inspection and recovery follow-up
 
