@@ -55,10 +55,10 @@ function completionStatus(page, month) {
   return <div className="planning-source-note"><strong>{page.complete ? 'Source marked complete' : 'Staged data is provisional'}</strong><span>{page.complete ? `All rows are declared complete for ${month}.` : `Source completeness is not confirmed for ${month}; totals may omit records.`}</span></div>
 }
 
-export default function PlanningModules({ page, dataSource, model, selectedMonth, selectedDate, filters, canReadIncrements = false }) {
+export default function PlanningModules({ page, dataSource, model, selectedMonth, selectedDate, filters, canReadIncrements = false, sourceLabel }) {
   const [query, setQuery] = useState('')
   const config = definitions[page]
-  const report = useMemo(() => dataSource === 'imported' ? getPlanningReport(model, page, selectedMonth, selectedDate, filters, { canReadIncrements }) : null, [dataSource, model, page, selectedMonth, selectedDate, filters, canReadIncrements])
+  const report = useMemo(() => dataSource !== 'demo' ? getPlanningReport(model, page, selectedMonth, selectedDate, filters, { canReadIncrements }) : null, [dataSource, model, page, selectedMonth, selectedDate, filters, canReadIncrements])
   const rows = report?.rows.map((row) => displayRow(page, row)) || []
   const filteredRows = rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(query.toLowerCase())))
   const columns = config.columns
@@ -67,7 +67,7 @@ export default function PlanningModules({ page, dataSource, model, selectedMonth
   const exportCsv = () => {
     const headers = columns.map(titleCase)
     const records = filteredRows.map((row) => columns.map((column) => row[column] ?? ''))
-    const csv = serializeCsv(headers, records)
+    const csv = serializeCsv(headers, records, sourceLabel)
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
     link.href = url

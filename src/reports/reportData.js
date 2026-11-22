@@ -235,8 +235,8 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   }
 }
 
-export function toCsv(rows, columns = Object.keys(rows[0] || {})) {
-  return serializeCsv(columns.map(reportColumnLabel), rows.map((row) => columns.map((key) => row[key] ?? '')))
+export function toCsv(rows, columns = Object.keys(rows[0] || {}), sourceLabel) {
+  return serializeCsv(columns.map(reportColumnLabel), rows.map((row) => columns.map((key) => row[key] ?? '')), sourceLabel)
 }
 
 import { serializeCsv } from '../data/csv'

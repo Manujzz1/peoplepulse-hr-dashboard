@@ -312,7 +312,7 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
     <div className="import-center">
       <div className="import-intro-row">
         <div><div className="eyebrow">PEOPLE PULSE <span>·</span> {dataSource === 'live' ? 'LIVE IMPORT APPROVAL' : 'LOCAL STAGING'}</div><h2>Data Import Centre</h2><p>Parse and validate files locally. Live submissions enter the database approval workflow and stay hidden from dashboards until published.</p></div>
-        <label className="import-source-selector"><Database size={16} /><span>Data source</span><select value={dataSource} onChange={(event) => onDataSourceChange(event.target.value)} aria-label="Dashboard data source">{databaseWorkspace && <option value="live">Live organization data</option>}<option value="demo">Synthetic demo</option><option value="imported">Local import preview</option></select></label>
+        <label className="import-source-selector"><Database size={16} /><span>Data source</span><select value={dataSource} onChange={(event) => onDataSourceChange(event.target.value)} aria-label="Dashboard data source"><option value="live">Live organization data</option><option value="imported">Local import preview</option></select></label>
       </div>
 
       {dataSource === 'live' && <Panel title="Organization import scope" subtitle="The current authenticated session and RLS policies determine which companies and batches are visible.">

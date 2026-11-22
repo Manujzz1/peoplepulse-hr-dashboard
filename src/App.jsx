@@ -11,6 +11,7 @@ import { supabase, supabaseConfigured } from './auth/supabaseClient'
 import { authStatusForEvent, authStatusForInitialSession, shouldClearPrivateStateOnAuthChange } from './auth/sessionStatus'
 import { canAccessPage, getAllowedReportKeys, getDepartmentScope, hasPermission, loadAccessProfile, PAGE_PERMISSIONS, REPORT_PERMISSIONS } from './auth/accessControl'
 import { loadLiveWorkspace, scopedLiveStages } from './data/liveWorkspace'
+import { TEMPORARY_SAMPLE_DATA } from './data/sampleData'
 import { inspectImportBatch, submitImportBatch, transitionImportBatch } from './import/remoteImport'
 const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
@@ -24,10 +25,7 @@ import { DEFAULT_INCREMENT_BAND_LIMITS } from './data/incrementPolicy'
 import { REPORTING_MONTHS } from './data/reportingCalendar'
 import { rollbackImportStage } from './import/staging'
 import { createHrModel, getImportedAvailableMonths, getImportedDashboardReadiness, getImportedEmployeeDirectory, getImportedMonthMetrics, getImportedTrendData } from './data/hrModel'
-import {
-  companiesList, DEMO_DATA_LOADED_AT, DEMO_DATA_LOADED_AT_LABEL, departmentsList, demoEmployees, employmentTypesList, getDepartmentData, getFilteredEmployees, getMonthMetrics,
-  getTrendData, locationsList, months,
-} from './data/demoData'
+import { getDepartmentData } from './data/demoData'
 import './App.css'
 
 const liveImportsEnabled = import.meta.env.VITE_ENABLE_LIVE_IMPORTS === 'true'
@@ -77,7 +75,7 @@ function DateFilter({ value, onChange, min = '2025-01-01', max = '2025-12-31' })
 }
 
 function App() {
-  const [authStatus, setAuthStatus] = useState(supabaseConfigured ? 'loading' : sessionStorage.getItem('peoplepulse-demo-mode') === 'true' ? 'demo' : 'anonymous')
+  const [authStatus, setAuthStatus] = useState(supabaseConfigured ? 'loading' : 'anonymous')
   const [authSession, setAuthSession] = useState(null)
   const [authActionError, setAuthActionError] = useState('')
   const [accessProfile, setAccessProfile] = useState(null)
@@ -85,7 +83,7 @@ function App() {
   const [accessIdentity, setAccessIdentity] = useState('')
   const accessIdentityRef = useRef('')
   const [activePage, setActivePage] = useState('executive')
-  const [dataSource, setDataSource] = useState(supabaseConfigured && sessionStorage.getItem('peoplepulse-demo-mode') !== 'true' ? 'live' : 'demo')
+  const [dataSource, setDataSource] = useState('live')
   const [liveWorkspaceState, setLiveWorkspaceState] = useState({ status: 'idle', workspace: null, error: null })
   const [liveRetry, setLiveRetry] = useState(0)
   const [stagedImports, setStagedImports] = useState({})
@@ -128,11 +126,11 @@ function App() {
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return
       if (error) {
-        setAuthStatus(authStatusForInitialSession(null, sessionStorage.getItem('peoplepulse-demo-mode') === 'true', 'loading'))
+        setAuthStatus(authStatusForInitialSession(null, 'loading'))
         return
       }
       setAuthSession(data.session)
-      setAuthStatus((current) => authStatusForInitialSession(data.session, sessionStorage.getItem('peoplepulse-demo-mode') === 'true', current))
+      setAuthStatus((current) => authStatusForInitialSession(data.session, current))
     })
     return () => {
       active = false
@@ -189,17 +187,15 @@ function App() {
     })
     return () => { active = false }
   }, [dataSource, authenticated, authenticatedAccessReady, accessProfile, currentAccessIdentity, liveRetry])
-  const canImport = authStatus === 'demo' || (authenticatedAccessReady && hasPermission(accessProfile, 'imports.write'))
-  const allowedReportKeys = useMemo(() => authStatus === 'demo'
-    ? getAllowedReportKeys({ permissions: new Set(['*']) })
-    : authenticatedAccessReady ? getAllowedReportKeys(accessProfile) : [], [authStatus, authenticatedAccessReady, accessProfile])
+  const canImport = authenticatedAccessReady && hasPermission(accessProfile, 'imports.write')
+  const allowedReportKeys = useMemo(() => authenticatedAccessReady ? getAllowedReportKeys(accessProfile) : [], [authenticatedAccessReady, accessProfile])
   const permissionPages = useMemo(() => authenticatedAccessReady
     ? Object.keys(pageInfo).filter((page) => canAccessPage(accessProfile, page))
     : [], [authenticatedAccessReady, accessProfile])
-  const availablePages = useMemo(() => authStatus === 'demo' ? Object.keys(pageInfo) : permissionPages.filter((page) => {
+  const availablePages = useMemo(() => permissionPages.filter((page) => {
     const scope = getDepartmentScope(accessProfile, permissionsForPage(page, allowedReportKeys))
     return scope === null || scope.length > 0
-  }), [authStatus, permissionPages, accessProfile, allowedReportKeys])
+  }), [permissionPages, accessProfile, allowedReportKeys])
   const activeView = availablePages.includes(activePage) ? activePage : availablePages[0] || 'executive'
   const pageDepartmentScope = useMemo(() => authenticatedAccessReady
     ? getDepartmentScope(accessProfile, permissionsForPage(activeView, allowedReportKeys))
@@ -207,18 +203,15 @@ function App() {
   const effectiveDepartment = useMemo(() => pageDepartmentScope === null
     ? department
     : pageDepartmentScope.includes(department) ? department : pageDepartmentScope[0] || 'All departments', [pageDepartmentScope, department])
-  const isModelSource = dataSource === 'imported' || dataSource === 'live'
   const stagedCompanyRows = useMemo(() => ['employeeMaster', 'employeeHistory', 'recruitment', 'contractManpower', 'hrBudget'].flatMap((category) => stagedImports[category]?.rows || []), [stagedImports])
   const latestStagedAt = Object.values(stagedImports).reduce((latest, stage) => !latest || stage.stagedAt > latest.stagedAt ? stage : latest, null)
-  const displayedDataTimestamp = dataSource === 'demo'
-    ? { dateTime: DEMO_DATA_LOADED_AT, label: DEMO_DATA_LOADED_AT_LABEL, context: 'Demo data loaded' }
-    : dataSource === 'live' && liveWorkspaceState.workspace?.loadedAt
+  const displayedDataTimestamp = dataSource === 'live' && liveWorkspaceState.workspace?.loadedAt
       ? { dateTime: liveWorkspaceState.workspace.loadedAt, label: new Date(liveWorkspaceState.workspace.loadedAt).toLocaleString(), context: 'Live data refreshed' }
     : latestStagedAt?.stagedAt
       ? { dateTime: latestStagedAt.stagedAt, label: latestStagedAt.stagedAtLabel || latestStagedAt.stagedAt, context: 'Last successful import' }
       : null
   const companyOptions = useMemo(() => {
-    const companies = dataSource === 'demo' ? companiesList : dataSource === 'live'
+    const companies = dataSource === 'live'
       ? (liveWorkspaceState.workspace?.companies || []).filter((row) => organization === 'All organizations' || liveWorkspaceState.workspace.organizations.find((item) => item.id === row.organization_id)?.organization_name === organization).map((row) => row.company_name)
       : stagedCompanyRows.map((row) => row.company).filter(Boolean)
     const hasUnassigned = dataSource === 'imported' && stagedCompanyRows.some((row) => !row.company)
@@ -228,24 +221,21 @@ function App() {
   const currentStages = useMemo(() => dataSource === 'live'
     ? scopedLiveStages(liveWorkspaceState.workspace, organization, effectiveCompany)
     : stagedImports, [dataSource, liveWorkspaceState.workspace, organization, effectiveCompany, stagedImports])
+  const hasSampleData = dataSource === 'live' && Boolean(currentStages.employeeMaster?.temporarySample)
   const importedModel = useMemo(() => createHrModel(currentStages), [currentStages])
   const filters = useMemo(() => ({ organization, department: fixedDepartment(effectiveDepartment), location, employmentType, company: effectiveCompany }), [organization, effectiveDepartment, location, employmentType, effectiveCompany])
   const importedMonths = useMemo(() => getImportedAvailableMonths(importedModel), [importedModel])
-  const reportingMonth = isModelSource && importedMonths.length && !importedMonths.includes(selectedMonth) ? importedMonths.at(-1) : selectedMonth
+  const reportingMonth = importedMonths.length && !importedMonths.includes(selectedMonth) ? importedMonths.at(-1) : selectedMonth
   const reportYear = Number(reportingMonth.slice(0, 4))
   const reportMonthNumber = Number(reportingMonth.slice(5, 7))
   const lastDayOfMonth = new Date(reportYear, reportMonthNumber, 0).getDate()
   const reportingDate = selectedDate.startsWith(`${reportingMonth}-`) ? selectedDate : `${reportingMonth}-${String(lastDayOfMonth).padStart(2, '0')}`
   const financialYearOptions = REPORTING_MONTHS.map((label, index) => ({ label, value: index + 1 }))
-  const monthlyMetrics = useMemo(() => isModelSource
-    ? getImportedMonthMetrics(importedModel, reportingMonth, filters, reportingDate, { financialYearStartMonth })
-    : null, [isModelSource, importedModel, reportingMonth, reportingDate, filters, financialYearStartMonth])
-  const importReadiness = useMemo(() => isModelSource
-    ? getImportedDashboardReadiness(importedModel, reportingMonth, { financialYearStartMonth })
-    : null, [isModelSource, importedModel, reportingMonth, financialYearStartMonth])
+  const monthlyMetrics = useMemo(() => getImportedMonthMetrics(importedModel, reportingMonth, filters, reportingDate, { financialYearStartMonth }), [importedModel, reportingMonth, reportingDate, filters, financialYearStartMonth])
+  const importReadiness = useMemo(() => getImportedDashboardReadiness(importedModel, reportingMonth, { financialYearStartMonth }), [importedModel, reportingMonth, financialYearStartMonth])
   const notificationItems = useMemo(() => {
     const items = []
-    if (isModelSource && importReadiness && !importReadiness.ready) {
+    if (!hasSampleData && !importReadiness.ready) {
       importReadiness.reasons.forEach((reason, index) => items.push({
         id: `readiness-${reportingMonth}-${index}`,
         title: `Imported data · ${reportingMonth}`,
@@ -265,15 +255,11 @@ function App() {
       })
     })
     return items
-  }, [isModelSource, importReadiness, reportingMonth, stagedImports])
-  const employees = useMemo(() => isModelSource
-    ? monthlyMetrics.headcount.activeEmployees
-    : getFilteredEmployees({ monthValue: selectedMonth, dateValue: selectedDate, financialYearStartMonth, ...filters }), [isModelSource, monthlyMetrics, selectedMonth, selectedDate, filters, financialYearStartMonth])
-  const trend = useMemo(() => isModelSource ? getImportedTrendData(importedModel, filters, { financialYearStartMonth }) : getTrendData(filters), [isModelSource, importedModel, filters, financialYearStartMonth])
+  }, [hasSampleData, importReadiness, reportingMonth, stagedImports])
+  const employees = monthlyMetrics.headcount.activeEmployees
+  const trend = useMemo(() => getImportedTrendData(importedModel, filters, { financialYearStartMonth }), [importedModel, filters, financialYearStartMonth])
   const employeeDirectoryRows = useMemo(() => {
-    const sourceRows = isModelSource
-      ? getImportedEmployeeDirectory(importedModel, reportingDate, filters).map((employee) => ({ ...employee, id: employee.employeeId, name: employee.employeeName }))
-      : demoEmployees
+    const sourceRows = getImportedEmployeeDirectory(importedModel, reportingDate, filters).map((employee) => ({ ...employee, id: employee.employeeId, name: employee.employeeName }))
     return sourceRows
       .filter((employee) => (!filters.department || filters.department === 'All departments' || employee.department === filters.department) &&
         (!filters.location || filters.location === 'All locations' || employee.location === filters.location) &&
@@ -283,21 +269,20 @@ function App() {
         ...employee,
         status: employee.hireDate > reportingDate ? 'Not yet joined' : employee.exitDate && employee.exitDate <= reportingDate ? 'Exited' : 'Active',
       }))
-  }, [isModelSource, importedModel, filters, reportingDate])
+  }, [importedModel, filters, reportingDate])
   const departmentData = useMemo(() => getDepartmentData(employees), [employees])
-  const reportingMonths = isModelSource && importedMonths.length
+  const reportingMonths = importedMonths.length
     ? importedMonths.map((value) => ({ label: value, value }))
-    : dataSource === 'demo' ? months : [{ label: dataSource === 'live' ? 'No published reporting periods' : 'No staged reporting periods', value: reportingMonth }]
-  const dateMin = isModelSource && importedMonths.length ? `${importedMonths[0]}-01` : '2025-01-01'
-  const maxMonth = isModelSource && importedMonths.length ? importedMonths.at(-1) : '2025-12'
+    : [{ label: dataSource === 'live' ? 'No published reporting periods' : 'No staged reporting periods', value: reportingMonth }]
+  const dateMin = importedMonths.length ? `${importedMonths[0]}-01` : '2025-01-01'
+  const maxMonth = importedMonths.at(-1) || '2025-12'
   const dateMax = `${maxMonth}-${String(new Date(Number(maxMonth.slice(0, 4)), Number(maxMonth.slice(5, 7)), 0).getDate()).padStart(2, '0')}`
-  const canReadIncrements = authStatus === 'demo' || (authenticatedAccessReady && hasPermission(accessProfile, 'increments.read'))
-  const canReadPayroll = authStatus === 'demo' || (authenticatedAccessReady && hasPermission(accessProfile, 'payroll.read'))
-  const canReadLeave = authStatus === 'demo' || (authenticatedAccessReady && hasPermission(accessProfile, 'leave.read'))
-  const canReadRecruitment = authStatus === 'demo' || (authenticatedAccessReady && hasPermission(accessProfile, 'recruitment.read'))
+  const canReadIncrements = authenticatedAccessReady && hasPermission(accessProfile, 'increments.read')
+  const canReadPayroll = authenticatedAccessReady && hasPermission(accessProfile, 'payroll.read')
+  const canReadLeave = authenticatedAccessReady && hasPermission(accessProfile, 'leave.read')
+  const canReadRecruitment = authenticatedAccessReady && hasPermission(accessProfile, 'recruitment.read')
   const getPeriodMetrics = (month, selectedFilters, date, metricOptions = {}) => {
     const selectedFinancialYearStart = metricOptions.financialYearStartMonth || financialYearStartMonth
-    if (dataSource === 'demo') return getMonthMetrics(month, selectedFilters, date, { financialYearStartMonth: selectedFinancialYearStart })
     const metrics = getImportedMonthMetrics(importedModel, month, selectedFilters, date, { projectCostBasis: metricOptions.projectCostBasis || projectCostBasis, financialYearStartMonth: selectedFinancialYearStart })
     const recruitment = canReadRecruitment ? getPlanningReport(importedModel, 'recruitment', month, date, selectedFilters) : null
     return {
@@ -355,25 +340,25 @@ function App() {
       exits: metrics.headcount.exitEmployees,
     }
   }
-  const projectAssignments = isModelSource ? employees.flatMap((employee) => employee.projectAssignments.length
+  const projectAssignments = employees.flatMap((employee) => employee.projectAssignments.length
     ? employee.projectAssignments.map((assignment) => ({ ...employee, id: `${employee.id}-${assignment.projectId}`, project: assignment.project, allocation: assignment.allocationPercentage }))
-    : [{ ...employee, id: `${employee.id}-unallocated`, project: 'Unallocated', allocation: 0 }]) : employees
+    : [{ ...employee, id: `${employee.id}-unallocated`, project: 'Unallocated', allocation: 0 }])
   const [title, subtitle] = pageInfo[activeView]
   const planningPage = ['recruitment', 'contracts', 'budget'].includes(activeView)
   const employeeMasterPage = activeView === 'employeeMaster'
   const planningCategory = activeView === 'recruitment' ? 'recruitment' : activeView === 'contracts' ? 'contractManpower' : 'hrBudget'
-  const planningRecordCount = isModelSource && planningPage
+  const planningRecordCount = planningPage
     ? importedModel[planningCategory].filter((row) => row.reportingMonth === reportingMonth &&
       (effectiveDepartment === 'All departments' || row.department === effectiveDepartment) &&
       (effectiveCompany === 'All companies' || (effectiveCompany === 'Not specified' ? !row.company : row.company === effectiveCompany)) &&
       (activeView !== 'contracts' || location === 'All locations' || !row.location || row.location === location)).length
     : 0
-  const monthLabel = isModelSource ? reportingMonth : months.find((month) => month.value === selectedMonth)?.label || ''
-  const departmentOptions = isModelSource ? [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.department).filter(Boolean))].sort() : departmentsList
-  const locationOptions = isModelSource ? [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.location).filter(Boolean))].sort() : locationsList
-  const employmentOptions = isModelSource ? [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.employmentType).filter(Boolean))].sort() : employmentTypesList
+  const monthLabel = reportingMonth
+  const departmentOptions = [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.department).filter(Boolean))].sort()
+  const locationOptions = [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.location).filter(Boolean))].sort()
+  const employmentOptions = [...new Set([...importedModel.employees.values(), ...importedModel.employeeHistory].map((employee) => employee.employmentType).filter(Boolean))].sort()
   const changeDataSource = (value) => {
-    if (value === 'live' && authStatus !== 'authenticated') return
+    if (!authenticated || (value !== 'live' && (value !== 'imported' || !canImport))) return
     setDataSource(value)
     setDepartment('All departments')
     setLocation('All locations')
@@ -412,9 +397,7 @@ function App() {
     setLiveWorkspaceState({ requestKey: liveLoadKey, status: 'ready', workspace, error: null })
     return workspace
   }
-  const sourceLabel = dataSource === 'live' ? 'Live Supabase data Â· rows returned under authenticated RLS'
-    : dataSource === 'imported' ? 'Local import preview Â· not published to the database'
-      : 'All employee records shown are synthetic demo data.'
+  const sourceLabel = hasSampleData ? TEMPORARY_SAMPLE_DATA : dataSource === 'live' ? 'Live Supabase data' : 'Local import preview'
   const updateMonth = (value) => {
     const [year, month] = value.split('-').map(Number)
     const lastDay = new Date(year, month, 0).getDate()
@@ -433,7 +416,7 @@ function App() {
     setCompany('All companies')
     setOrganization('All organizations')
     setFinancialYearStartMonth(4)
-    const defaultMonth = isModelSource ? importedMonths.at(-1) : '2025-12'
+    const defaultMonth = importedMonths.at(-1) || '2025-12'
     if (defaultMonth) updateMonth(defaultMonth)
   }
 
@@ -448,11 +431,10 @@ function App() {
         return
       }
     }
-    sessionStorage.removeItem('peoplepulse-demo-mode')
     setStagedImports({})
     setImportHistory([])
     setImportRollback(null)
-    setDataSource('demo')
+    setDataSource('live')
     setLiveWorkspaceState({ status: 'idle', workspace: null, error: null })
     setOrganization('All organizations')
     setDepartment('All departments')
@@ -487,7 +469,6 @@ function App() {
       recoveryMode={authStatus === 'recovery'}
       onAuthenticated={(session) => { setDataSource('live'); setAuthSession(session); setAuthStatus('authenticated') }}
       onRecoveryComplete={() => setAuthStatus('authenticated')}
-      onDemoLogin={() => { setDataSource('demo'); sessionStorage.setItem('peoplepulse-demo-mode', 'true'); setAuthStatus('demo') }}
     />
   }
 
@@ -499,10 +480,10 @@ function App() {
   if (dataSource === 'live' && currentLiveWorkspaceStatus !== 'ready') {
     const failed = currentLiveWorkspaceStatus === 'error'
     const denied = liveWorkspaceState.error?.code === 'UNAUTHORIZED'
-    return <main className="login-page"><section className="login-card"><div className="login-intro"><p className="login-eyebrow">LIVE ORGANIZATION DATA</p><h1>{failed ? denied ? 'Live data access is not authorized' : 'Live data could not be loaded' : 'Loading live organization data'}</h1><p>{failed ? denied ? 'Your verified session has no active organization data scope. Contact a PeoplePulse administrator.' : liveWorkspaceState.error?.message || 'The database request failed. Demo data was not substituted.' : 'Verifying your session and loading rows allowed by database RLS.'}</p></div>{failed && <div className="login-actions"><button className="login-submit" type="button" onClick={() => setLiveRetry((count) => count + 1)}>Retry live connection</button><button className="login-secondary" type="button" onClick={() => changeDataSource('demo')}>Switch to synthetic demo</button><button className="logout-button" type="button" onClick={signOut}>Sign out</button></div>}</section></main>
+    return <main className="login-page"><section className="login-card"><div className="login-intro"><p className="login-eyebrow">LIVE ORGANIZATION DATA</p><h1>{failed ? denied ? 'Live data access is not authorized' : 'Live data could not be loaded' : 'Loading live organization data'}</h1><p>{failed ? denied ? 'Your verified session has no active organization data scope. Contact a PeoplePulse administrator.' : liveWorkspaceState.error?.message || 'The database request failed.' : 'Verifying your session and loading rows allowed by database RLS.'}</p></div>{failed && <div className="login-actions"><button className="login-submit" type="button" onClick={() => setLiveRetry((count) => count + 1)}>Retry live connection</button><button className="logout-button" type="button" onClick={signOut}>Sign out</button></div>}</section></main>
   }
   if (dataSource === 'live' && liveWorkspaceState.workspace && !liveWorkspaceState.workspace.companies.length) {
-    return <main className="login-page"><section className="login-card"><div className="login-intro"><p className="login-eyebrow">LIVE ORGANIZATION DATA</p><h1>No company is configured yet</h1><p>Your organization role is valid, but there are no active companies to query. No demo data has been substituted. An administrator can configure a company, department, and location through the approved onboarding process.</p></div><div className="login-actions"><button className="login-secondary" type="button" onClick={() => changeDataSource('demo')}>Open synthetic demo</button><button className="logout-button" type="button" onClick={signOut}>Sign out</button></div></section></main>
+    return <main className="login-page"><section className="login-card"><div className="login-intro"><p className="login-eyebrow">LIVE ORGANIZATION DATA</p><h1>No company is configured yet</h1><p>Your organization role is valid, but there are no active companies to query. An administrator can configure a company, department, and location through the approved onboarding process.</p></div><div className="login-actions"><button className="logout-button" type="button" onClick={signOut}>Sign out</button></div></section></main>
   }
 
   return (
@@ -521,12 +502,12 @@ function App() {
           <button className="mobile-menu icon-button" aria-label="Open menu" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
           <div className="breadcrumb"><span>People analytics</span><i>/</i><b>{title}</b></div>
           <div className="topbar-right">
-            <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}<option value="demo">Synthetic demo</option>{canImport && <option value="imported">Local import preview</option>}</select></label>
-            <span className={`data-badge ${dataSource !== 'demo' ? 'staging-badge' : ''}`}><i /> {dataSource === 'live' ? 'Live RLS data' : dataSource === 'demo' ? 'Synthetic demo' : 'Local preview'}</span>
+            <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}{canImport && <option value="imported">Local import preview</option>}</select></label>
+            <span className="data-badge staging-badge"><i /> {dataSource === 'live' ? hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS data' : 'Local preview'}</span>
             <NotificationsCenter items={notificationItems} onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
             <HelpCenter onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
-            <div className="user-avatar">{authStatus === 'demo' ? 'D' : (authSession?.user?.email || 'U').slice(0, 1).toUpperCase()}</div>
-            <div className="user-copy"><strong>{authStatus === 'demo' ? 'Synthetic Demo' : authSession?.user?.email || 'Signed in'}</strong><small>{authStatus === 'demo' ? 'Fictional sample data' : accessProfile?.roleLabel || 'Authenticated account'}</small></div>
+            <div className="user-avatar">{(authSession?.user?.email || 'U').slice(0, 1).toUpperCase()}</div>
+            <div className="user-copy"><strong>{authSession?.user?.email || 'Signed in'}</strong><small>{accessProfile?.roleLabel || 'Authenticated account'}</small></div>
             {authActionError && <span className="auth-action-error" role="alert">{authActionError}</span>}
             <button className="logout-button" onClick={signOut} aria-label="Sign out"><LogOut size={15} /><span>Sign out</span></button>
           </div>
@@ -536,12 +517,12 @@ function App() {
             <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
             <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>
           </div>
-          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : isModelSource && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
+          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : !currentStages.employeeMaster?.sampleOnly && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
             <section className="source-mode-empty">
               <div className="source-mode-icon"><Database size={22} /></div>
               <p className="eyebrow">IMPORTED DATA Â· {reportingMonth}</p>
               <h2>Imported dashboard is waiting for complete, verified sources</h2>
-              <p>{dataSource === 'live' ? 'No published live source rows are available for this reporting period.' : 'Local preview rows are separate from synthetic demo data. Complete the following checks before the preview can power the dashboard.'}</p>
+              <p>{dataSource === 'live' ? 'No published live source rows are available for this reporting period.' : 'Local preview rows have not been published. Complete the following checks before the preview can power the dashboard.'}</p>
               <ul className="readiness-reasons">{importReadiness.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
               <div className="source-stage-list">{IMPORT_CATEGORIES.map((item) => <div key={item.id}><span>{item.label}</span><b>{currentStages[item.id]?.rows.length || 0} visible rows</b></div>)}</div>
               {dataSource !== 'live' && <button type="button" className="stage-button" onClick={() => setActivePage('dataImport')}>Open Data Import</button>}
@@ -562,24 +543,21 @@ function App() {
             <div className="filter-spacer" />
             <span className="filter-result"><b>{activeView === 'dataQuality' ? Object.keys(stagedImports).length : planningPage ? planningRecordCount : employeeMasterPage ? employeeDirectoryRows.length : employees.length}</b> {activeView === 'dataQuality' ? 'staged categories' : planningPage ? 'planning records' : 'employees'}</span>
           </div>
-          {dataSource === 'live' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Live RLS-backed data</b> — only published records visible to the authenticated session are included.</span></div> : employeeMasterPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local Employee Master preview</b> — not published to the database.</span></div> : planningPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local planning preview</b> — not published to the database.</span></div> : activeView === 'dataQuality' ? null : dataSource === 'demo' ? <div className="synthetic-banner">
-            <span className="banner-shield"><Check size={14} /></span>
-            <span><b>Synthetic demo data</b> â€” all employee records and metrics are fictional and generated for demonstration.</span>
-          </div> : <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Imported reporting period verified</b> — only staged imported sources are shown. Trend points for incomplete historical periods are omitted. {!importedModel.completeness.employeeHistory ? 'Past-period department, location, and employment filters use roster attributes until a complete Employee History is staged.' : 'Effective-dated Employee History is applied to past-period workforce attributes.'}{importReadiness.metrics.payroll.missingAnnualCtcCount > 0 ? ' Annual CTC is shown as unavailable where it was not supplied.' : ''}</span></div>}
-          {employees.length === 0 && !employeeMasterPage && activeView !== 'dataQuality' && <div className="empty-filter-state"><Search size={18} /><div><strong>No employees in this selection</strong><p>{dataSource === 'live' ? 'No published employee rows are visible for this organization, company, and reporting period.' : dataSource === 'imported' ? 'No local preview rows match the selected filters.' : 'Try changing the department or location filter to see synthetic sample analytics.'}</p></div></div>}
+          {dataSource === 'live' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>{hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS-backed data'}</b>{hasSampleData ? ' ? fictional ADTL records. Do not use these figures as real HR or payroll data.' : ' ? records are scoped to the authenticated session.'}</span></div> : employeeMasterPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local Employee Master preview</b> — not published to the database.</span></div> : planningPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local planning preview</b> — not published to the database.</span></div> : activeView === 'dataQuality' ? null : <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Imported reporting period verified</b> — only staged imported sources are shown. Trend points for incomplete historical periods are omitted. {!importedModel.completeness.employeeHistory ? 'Past-period department, location, and employment filters use roster attributes until a complete Employee History is staged.' : 'Effective-dated Employee History is applied to past-period workforce attributes.'}{importReadiness.metrics.payroll.missingAnnualCtcCount > 0 ? ' Annual CTC is shown as unavailable where it was not supplied.' : ''}</span></div>}
+          {employees.length === 0 && !employeeMasterPage && activeView !== 'dataQuality' && <div className="empty-filter-state"><Search size={18} /><div><strong>No employees in this selection</strong><p>{dataSource === 'live' ? 'No published employee rows are visible for this organization, company, and reporting period.' : 'No local preview rows match the selected filters.'}</p></div></div>}
           <Suspense fallback={<div className="source-mode-empty">Loading dashboard module…</div>}>
             {activeView === 'dataQuality'
               ? <DataQualityCenter model={importedModel} stagedImports={stagedImports} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} canReadIncrements={canReadIncrements} financialYearStartMonth={financialYearStartMonth} />
               : employeeMasterPage
-              ? <EmployeeDirectory employees={employeeDirectoryRows} asOfDate={reportingDate} sourceLabel={sourceLabel} rosterComplete={dataSource === 'demo' || Boolean(importedModel.employeeMasterAsOf)} />
+              ? <EmployeeDirectory employees={employeeDirectoryRows} asOfDate={reportingDate} sourceLabel={sourceLabel} rosterComplete={Boolean(importedModel.employeeMasterAsOf)} />
               : planningPage
-              ? <PlanningModules page={activeView} dataSource={dataSource} model={importedModel} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} canReadIncrements={canReadIncrements} />
+              ? <PlanningModules page={activeView} dataSource={dataSource} model={importedModel} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} canReadIncrements={canReadIncrements} sourceLabel={sourceLabel} />
               : activeView === 'reports'
               ? <ReportsCenter employees={employees} trends={trend} departments={departmentData} projectAssignments={projectAssignments} importedModel={importedModel} dataSource={dataSource} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} getPeriodMetrics={getPeriodMetrics} sourceLabel={sourceLabel} allowedReports={allowedReportKeys} authStatus={authStatus} incrementBandLimits={incrementBandLimits} liveLoadedAt={liveWorkspaceState.workspace?.loadedAt} liveUserId={liveWorkspaceState.workspace?.userId} liveScopeKey={liveWorkspaceState.workspace?.scopeKey} refreshLiveWorkspace={refreshLiveWorkspaceForExport} />
-              : <DashboardModules page={activeView} employees={employees} trends={trend} departments={departmentData} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} getPeriodMetrics={getPeriodMetrics} financialYearStartMonth={financialYearStartMonth} sourceLabel={sourceLabel} isImported={isModelSource} projectAssignments={projectAssignments} canReadEmployees={authStatus === 'demo' || hasPermission(accessProfile, 'employee.read')} canReadPayroll={canReadPayroll} canReadLeave={canReadLeave} projectCostBasis={projectCostBasis} onProjectCostBasisChange={setProjectCostBasis} incrementBandLimits={incrementBandLimits} onIncrementBandLimitsChange={setIncrementBandLimits} />}
+              : <DashboardModules page={activeView} employees={employees} trends={trend} departments={departmentData} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} getPeriodMetrics={getPeriodMetrics} financialYearStartMonth={financialYearStartMonth} sourceLabel={sourceLabel} isImported projectAssignments={projectAssignments} canReadEmployees={hasPermission(accessProfile, 'employee.read')} canReadPayroll={canReadPayroll} canReadLeave={canReadLeave} projectCostBasis={projectCostBasis} onProjectCostBasisChange={setProjectCostBasis} incrementBandLimits={incrementBandLimits} onIncrementBandLimitsChange={setIncrementBandLimits} />}
           </Suspense>
           </>}
-          <footer className="app-footer"><span>PeoplePulse <i>Â·</i> HR Analytics</span><span>{dataSource === 'imported' ? 'Imported source · no file upload to a server' : 'For demonstration purposes only · No live employee data'}</span></footer>
+          <footer className="app-footer"><span>PeoplePulse <i>Â·</i> HR Analytics</span><span>{dataSource === 'imported' ? 'Imported source · no file upload to a server' : sourceLabel}</span></footer>
         </div>
       </main>
     </div>

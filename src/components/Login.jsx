@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Activity, ArrowRight, KeyRound, LockKeyhole, Mail } from 'lucide-react'
 import { supabase, supabaseConfigured, supabaseConfigurationError } from '../auth/supabaseClient'
 
-export default function Login({ onDemoLogin, onAuthenticated, recoveryMode = false, onRecoveryComplete }) {
+export default function Login({ onAuthenticated, recoveryMode = false, onRecoveryComplete }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -66,7 +66,7 @@ export default function Login({ onDemoLogin, onAuthenticated, recoveryMode = fal
           <p className="login-showcase-foot">Fictional sample records only · no live employee data</p>
         </aside>
         <section className="login-card" aria-labelledby="login-title">
-          <div className="login-intro"><p className="login-eyebrow">{recoveryMode ? 'ACCOUNT RECOVERY' : 'WELCOME TO PEOPLEPULSE'}</p><h1 id="login-title">{recoveryMode ? 'Choose a new password' : 'Sign in to your workspace'}</h1><p>{recoveryMode ? 'Set a new password for your PeoplePulse account.' : supabaseConfigured ? 'Use your organisation account to continue.' : 'Enter the workspace with synthetic sample data.'}</p></div>
+          <div className="login-intro"><p className="login-eyebrow">{recoveryMode ? 'ACCOUNT RECOVERY' : 'WELCOME TO PEOPLEPULSE'}</p><h1 id="login-title">{recoveryMode ? 'Choose a new password' : 'Sign in to your workspace'}</h1><p>{recoveryMode ? 'Set a new password for your PeoplePulse account.' : 'Use your organisation account to continue.'}</p></div>
           {supabaseConfigured && <form className="login-form" onSubmit={submit}>
             {!recoveryMode && <label>Email address<span className="login-input"><Mail size={16} /><input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" /></span></label>}
             <label>{recoveryMode ? 'New password' : 'Password'}<span className="login-input"><LockKeyhole size={16} /><input type="password" autoComplete={recoveryMode ? 'new-password' : 'current-password'} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} placeholder={recoveryMode ? 'At least 8 characters' : 'Enter your password'} /></span></label>
@@ -77,7 +77,6 @@ export default function Login({ onDemoLogin, onAuthenticated, recoveryMode = fal
           </form>}
           {error && !supabaseConfigured && <p className="login-error" role="alert">{error}</p>}
           {message && !supabaseConfigured && <p className="login-success" role="status">{message}</p>}
-          {!recoveryMode && <div className="demo-mode-card"><div className="demo-mode-heading"><span><Activity size={16} /></span><strong>Synthetic demo access</strong></div><span>This opens fictional sample data. It does not sign in to an organisation account or protect real HR information.</span><button type="button" className="login-submit" onClick={onDemoLogin}>Continue to demo workspace <ArrowRight size={16} /></button></div>}
           {!supabaseConfigured && <div className="login-setup-note"><LockKeyhole size={15} /><p><b>Organisation sign-in isn’t connected</b><span>{supabaseConfigurationError || 'No account credentials are configured for this site. An administrator must connect Supabase Auth and provision your account.'}</span></p></div>}
           {supabaseConfigured && <p className="login-security-note">Organisation sign-in uses Supabase Auth. Access to real HR data also requires approved server-side database policies.</p>}
         </section>

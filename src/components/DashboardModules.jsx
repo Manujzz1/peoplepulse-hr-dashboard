@@ -37,7 +37,7 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
 
   const exportCsv = () => {
     const rows = filtered.map((employee) => tableColumns.map(({ key, format }) => format ? format(employee[key]) : employee[key]))
-    const csv = serializeCsv(tableColumns.map((column) => column.label), rows)
+    const csv = serializeCsv(tableColumns.map((column) => column.label), rows, sourceLabel)
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
     link.href = url

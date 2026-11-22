@@ -3,8 +3,9 @@ import { resolve } from 'node:path'
 import { createServer } from 'vite'
 
 const root = process.cwd()
-process.env.VITE_SUPABASE_URL = ''
-process.env.VITE_SUPABASE_PUBLISHABLE_KEY = ''
+process.env.VITE_SUPABASE_URL = 'https://peoplepulse-e2e.test'
+process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_local_browser_fixture'
+process.env.VITE_ENABLE_LIVE_IMPORTS = 'false'
 
 const server = await createServer({
   configFile: resolve(root, 'vite.config.js'),

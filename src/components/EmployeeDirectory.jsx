@@ -23,6 +23,7 @@ export default function EmployeeDirectory({ employees, asOfDate, sourceLabel, ro
     const csv = serializeCsv(
       ['Employee ID', 'Employee Name', 'Company', 'Department', 'Designation', 'Grade', 'Location', 'Employment Type', 'Hire Date', 'Exit Date', 'Status'],
       filtered.map((employee) => [employee.id, employee.name, employee.company, employee.department, employee.designation, employee.grade, employee.location, employee.employmentType, employee.hireDate, employee.exitDate, employee.status]),
+      sourceLabel,
     )
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')

@@ -91,7 +91,7 @@ export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, m
           })}
         </nav>
         <div className="sidebar-bottom">
-          <div className="data-note"><span className="note-icon"><WalletCards size={16} /></span><span><strong>Demo workspace</strong><small>Synthetic data only</small></span></div>
+          <div className="data-note"><span className="note-icon"><WalletCards size={16} /></span><span><strong>Organisation workspace</strong><small>Access is role scoped</small></span></div>
           <button className="collapse-button" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
             <span>Collapse menu</span>

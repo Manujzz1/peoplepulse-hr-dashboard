@@ -5,13 +5,12 @@ export function authStatusForEvent(event, session, currentStatus = 'loading') {
   return session ? 'authenticated' : 'anonymous'
 }
 
-export function authStatusForInitialSession(session, demoMode, currentStatus) {
+export function authStatusForInitialSession(session, currentStatus) {
   if (currentStatus === 'recovery') return 'recovery'
   if (session) return 'authenticated'
-  return demoMode ? 'demo' : 'anonymous'
+  return 'anonymous'
 }
 
 export function shouldClearPrivateStateOnAuthChange(previousStatus, nextStatus) {
-  return (previousStatus === 'authenticated' && nextStatus !== 'authenticated')
-    || (previousStatus === 'demo' && nextStatus === 'authenticated')
+  return previousStatus === 'authenticated' && nextStatus !== 'authenticated'
 }

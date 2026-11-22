@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, FileText, Printer } from 'lucide-react'
 import { Panel } from './DashboardParts'
 import { getPreviousDateValue, getPreviousMonthValue } from '../data/demoData'
 import { getPlanningReport } from '../data/planningModel'
+import { TEMPORARY_SAMPLE_DATA } from '../data/sampleData'
 import { createDashboardReport, reportColumnLabel, REPORT_COLUMNS, toCsv } from '../reports/reportData'
 import { getExecutivePdfHighlights, getExecutivePdfTableStartY, isConfidentialReport } from '../reports/reportPresentation'
 import { getAllowedReportKeys, loadCurrentAccessProfile } from '../auth/accessControl'
@@ -152,7 +153,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
 
   const exportCsv = async () => {
     if (!await verifyReportExport(reportKey)) return
-    saveBlob(new Blob([toCsv(rows, columns)], { type: 'text/csv;charset=utf-8' }), filename(activeReport.title, selectedMonth))
+    saveBlob(new Blob([toCsv(rows, columns, sourceLabel)], { type: 'text/csv;charset=utf-8' }), filename(activeReport.title, selectedMonth))
     setStatus(`${activeReport.label} CSV downloaded with the current filters.`)
     setError('')
   }
@@ -175,6 +176,9 @@ export default function ReportsCenter({ employees, departments, trends, selected
       const workbook = new ExcelJS.Workbook()
       workbook.creator = 'PeoplePulse HR MIS'
       workbook.created = new Date()
+      if (sourceLabel === TEMPORARY_SAMPLE_DATA) {
+        workbook.addWorksheet(TEMPORARY_SAMPLE_DATA).addRow([TEMPORARY_SAMPLE_DATA, 'Fictional ADTL records'])
+      }
       const worksheets = [
         ['Executive Summary', 'summary'], ['Monthly Headcount', 'headcount'], ['Joiners and Exits', 'movements'],
         ['Attrition and Trends', 'trends'], ['Payroll Summary', 'payroll'], ['Department Payroll', 'departments'],

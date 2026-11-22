@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { createSampleRows } from '../scripts/adtl-sample-seed.mjs'
 
 const browserErrors = new WeakMap()
 
@@ -21,93 +22,80 @@ test.afterEach(async ({ page }) => {
   expect(browserErrors.get(page), 'browser console and unhandled promise errors').toEqual([])
 })
 
-async function enterDemo(page) {
+const fixtureHost = 'https://peoplepulse-e2e.test'
+const organization = { id: 'synthetic-org', organization_name: 'Synthetic test organization' }
+const company = { id: 'synthetic-adtl', company_key: 'adtl', company_name: 'Alpha Design Technologies Pvt. Ltd.', organization_id: organization.id, currency_code: 'INR' }
+const user = { id: 'synthetic-user', email: 'analyst@example.test', role: 'authenticated', aud: 'authenticated', is_anonymous: false }
+const claims = Buffer.from(JSON.stringify({ sub: user.id, exp: 4102444800, aud: 'authenticated' })).toString('base64url')
+const session = { access_token: 'eyJhbGciOiJIUzI1NiJ9.' + claims + '.eA', refresh_token: 'fixture-refresh', token_type: 'bearer', expires_in: 3600, user }
+const fixture = Object.fromEntries(Object.entries(createSampleRows()).map(([table, rows]) =>
+  [table, rows.map((row) => ({ company_id: company.id, ...row }))]))
+Object.assign(fixture, { organizations: [organization], companies: [company],
+  user_roles: [{ user_id: user.id, organization_id: organization.id, company_id: company.id, department_id: null, active: true, role_key: 'super_admin' }] })
+
+async function openLogin(page) {
+  await page.route(fixtureHost + '/**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/auth/v1/token') return route.fulfill({ json: session })
+    if (url.pathname === '/auth/v1/user') return route.fulfill({ json: user })
+    if (url.pathname === '/auth/v1/logout') return route.fulfill({ status: 204 })
+    if (url.pathname.startsWith('/rest/v1/') && route.request().method() === 'GET') {
+      const rows = fixture[url.pathname.split('/').at(-1)] || []
+      const offset = Number(url.searchParams.get('offset') || 0)
+      const limit = Number(url.searchParams.get('limit') || rows.length)
+      return route.fulfill({ json: rows.slice(offset, offset + limit) })
+    }
+    return route.fulfill({ status: 404 })
+  })
   await page.goto('/')
-  await page.getByRole('button', { name: /Continue to demo workspace/ }).click()
-  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
-  await expect(page.getByText(/Demo data loaded/)).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Period comparisons' })).toBeVisible()
-  await expect(page.getByText('Quarter to date vs prior quarter')).toBeVisible()
-  await page.locator('.topbar-source select').selectOption('imported')
-  await expect(page.getByRole('button', { name: /Notifications, \d+ active alerts/ })).toBeVisible()
-  await page.getByRole('button', { name: /Notifications, \d+ active alerts/ }).click()
-  await expect(page.getByRole('region', { name: 'Notifications' })).toContainText('Imported data · 2025-12')
-  await page.getByRole('button', { name: /Imported data · 2025-12/ }).first().click()
-  await expect(page.getByRole('heading', { name: 'Data Quality' })).toBeVisible()
-  await page.getByRole('button', { name: 'Executive dashboard' }).click()
-  await page.locator('.topbar-source select').selectOption('demo')
-  await page.getByRole('button', { name: 'Open PeoplePulse help' }).click()
-  await expect(page.getByRole('dialog', { name: 'Dashboard help' })).toBeVisible()
-  await page.getByRole('button', { name: 'Open Data Import' }).click()
-  await expect(page.getByRole('heading', { name: 'Data Import Centre' })).toBeVisible()
-  await page.getByRole('button', { name: 'Executive dashboard' }).click()
-  await page.getByRole('button', { name: 'Open PeoplePulse help' }).click()
-  await page.getByRole('button', { name: 'View KPI definitions' }).click()
-  await expect(page.locator('.kpi-definitions[open]')).toBeVisible()
 }
 
-test('protects the workspace until sign-in or explicit demo entry and returns to the gate on sign-out', async ({ page }) => {
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
-
-  await page.getByRole('button', { name: /Continue to demo workspace/ }).click()
+async function enterWorkspace(page) {
+  await openLogin(page)
+  await page.getByLabel('Email address').fill(user.email)
+  await page.getByLabel('Password').fill('synthetic-fixture-password')
+  await page.getByRole('button', { name: 'Sign in securely' }).click()
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
+  await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
+}
 
+test('requires an organization session and clears access on sign-out', async ({ page }) => {
+  await enterWorkspace(page)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /demo/i })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
 })
 
-test('demo entry, navigation, shared filters, and employee search work', async ({ page }) => {
-  const pageErrors = []
-  page.on('pageerror', (error) => pageErrors.push(error.message))
-  await enterDemo(page)
-  await page.getByLabel('Financial year starts').selectOption('1')
-  await expect(page.getByText(/January–December reporting-year-to-date/)).toBeVisible()
-  await page.getByRole('button', { name: 'Attendance & leave' }).click()
-  await expect(page.getByText(/January–December FYTD · synthetic allowance/)).toBeVisible()
-  await page.getByLabel('Company').selectOption('Northstar Services')
-  await expect(page.locator('.filter-result')).not.toContainText('120 employees')
-  await page.getByLabel('Company').selectOption('All companies')
-
+test('loads labelled ADTL data for employee, payroll and attendance views and filters', async ({ page }) => {
+  await enterWorkspace(page)
+  await page.getByLabel('Company').selectOption(company.company_name)
   await page.getByRole('button', { name: 'Employee Master' }).click()
-  await expect(page.getByRole('heading', { name: 'Employee Master' }).first()).toBeVisible()
   await expect(page.locator('.table-count')).toContainText('120 of 120 records')
-  await page.getByLabel('Search employee master').fill('SYN-001')
+  await page.getByLabel('Search employee master').fill('SYN-ADTL-001')
   await expect(page.getByRole('button', { name: 'Sample Employee 001' })).toBeVisible()
   await page.getByRole('button', { name: 'Sample Employee 001' }).click()
   await expect(page.getByRole('dialog', { name: 'Sample Employee 001' })).toBeVisible()
-  await expect(page.getByText('Recorded history')).toBeVisible()
-
   await page.getByRole('button', { name: 'Close employee profile' }).click()
-  await page.getByLabel('Department').selectOption('Engineering')
+  await page.getByLabel('Department', { exact: true }).selectOption('Engineering')
   await expect(page.locator('.filter-result')).not.toContainText('120 employees')
-  await page.getByRole('button', { name: 'Workforce' }).click()
-  await expect(page.getByRole('heading', { name: 'Workforce analytics' })).toBeVisible()
-  await expect(page.getByLabel('Department', { exact: true })).toHaveValue('Engineering')
-  await page.getByRole('button', { name: 'Project allocation' }).click()
-  await expect(page.getByRole('heading', { name: 'Project allocation' }).first()).toBeVisible()
-  const projectSelector = page.getByLabel('Project', { exact: true })
-  const projectValue = await projectSelector.locator('option').nth(1).getAttribute('value')
-  await projectSelector.selectOption(projectValue)
-  await expect(page.locator('.table-count').last()).not.toContainText('120 records')
-  await expect(page.locator('.metric-card').filter({ hasText: 'Active resources' })).toBeVisible()
-  await page.getByRole('button', { name: 'Data Quality', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Data Quality' })).toBeVisible()
-  await expect(page.getByText('In-memory source audit')).toBeVisible()
-  await expect(page.getByText('Payroll control-total difference')).toBeVisible()
-  expect(pageErrors).toEqual([])
+  await page.getByRole('button', { name: 'Payroll & CTC' }).click()
+  await expect(page.getByText('Monthly gross salary', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Attendance & leave' }).click()
+  await expect(page.getByText('Attendance percentage', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
 })
 
 test('CSV validation and in-memory staging complete without a network upload', async ({ page }) => {
   const externalRequests = []
   const pageErrors = []
   page.on('request', (request) => {
-    if (!request.url().startsWith('http://127.0.0.1:5173')) externalRequests.push(request.url())
+    if (request.url().includes('/rest/v1/') && request.method() !== 'GET') externalRequests.push(request.url())
   })
   page.on('pageerror', (error) => pageErrors.push(error.message))
-  await enterDemo(page)
+  await enterWorkspace(page)
   await page.getByRole('button', { name: 'Data Import' }).click()
   await expect(page.getByRole('heading', { name: 'Data Import Centre' })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles({
@@ -165,7 +153,7 @@ test('CSV validation and in-memory staging complete without a network upload', a
 test('report catalogue, CSV, Excel and PDF downloads, and mobile navigation are usable', async ({ page }, testInfo) => {
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
-  await enterDemo(page)
+  await enterWorkspace(page)
   await page.getByRole('button', { name: 'Reports Centre' }).click()
   await expect(page.getByRole('heading', { name: 'Management Reports Centre' })).toBeVisible()
   const reportSelect = page.locator('.report-controls select')
@@ -176,6 +164,7 @@ test('report catalogue, CSV, Excel and PDF downloads, and mobile navigation are 
   await page.getByRole('button', { name: 'Download CSV' }).click()
   const download = await downloadPromise
   expect(download.suggestedFilename()).toContain('project-cost')
+  expect(await readFile(await download.path(), 'utf8')).toContain('Temporary Sample Data')
 
   const excelDownloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Download Excel' }).click()

@@ -1,5 +1,6 @@
 import { MONTHLY_IMPORT_CATEGORIES } from '../import/importSchemas'
 import { PAYROLL_COMPONENTS } from './hrModel'
+import { ADTL_SAMPLE_DEPARTMENT_PREFIX, ADTL_SAMPLE_PREFIX } from './sampleData'
 
 export class LiveWorkspaceError extends Error {
   constructor(message, code = 'LIVE_DATA_ERROR') {
@@ -78,11 +79,22 @@ function buildStages(data, metadataAllowed) {
   })
   const metadataByCompany = (type) => data.companies.map(({ id }) =>
     (batchesByType.get(type) || []).filter((batch) => batch.company_id === id))
+  const sampleCompanyIds = new Set(data.companies.filter((company) => company.company_key === 'adtl' &&
+    (data.departments.some((row) => row.company_id === company.id && row.department_key?.startsWith(ADTL_SAMPLE_DEPARTMENT_PREFIX)) ||
+      data.employees.some((row) => row.company_id === company.id && row.employee_code?.startsWith(ADTL_SAMPLE_PREFIX))))
+    .map((company) => company.id))
+  const sampleOnly = data.companies.length === 1 && sampleCompanyIds.has(data.companies[0].id) &&
+    data.employees.every((row) => row.employee_code?.startsWith(ADTL_SAMPLE_PREFIX))
   const allCompaniesComplete = (type, test = (batch) => batch.metadata?.complete === true) => metadataAllowed
     && data.companies.length > 0 && metadataByCompany(type).every((batches) => batches.some(test))
   const rosterDates = metadataAllowed ? metadataByCompany('employee_master').map((batches) =>
     batches.map((batch) => batch.metadata?.completeAsOf).filter(Boolean).sort().at(-1)) : []
   const monthMetadata = (type) => {
+    const sampleRows = { payroll: data.payroll, attendance: data.attendance, leave: data.leave,
+      performance: data.performance, project_allocation: data.allocations }
+    if (sampleOnly && Object.hasOwn(sampleRows, type)) {
+      return { completeMonths: [...new Set(sampleRows[type].map((row) => monthOf(row.reporting_month)).filter(Boolean))].sort() }
+    }
     const monthsByCompany = metadataByCompany(type).map((batches) => new Set(batches.flatMap((batch) => {
       const months = batch.metadata?.completeMonths
       return Array.isArray(months) && months.length ? months : batch.metadata?.complete && batch.reporting_month ? [monthOf(batch.reporting_month)] : []
@@ -98,7 +110,8 @@ function buildStages(data, metadataAllowed) {
     department: departmentById.get(row.department_id) || '', location: locationById.get(row.location_id) || '',
     designation: row.designation || '', grade: row.grade || '', employmentType: row.employment_type || '',
     hireDate: row.hire_date, exitDate: row.exit_date || '', managerEmployeeId: employeeById.get(row.manager_employee_id)?.employee_code || '',
-  })), { completeAsOf: rosterDates.length && rosterDates.every(Boolean) ? rosterDates.sort()[0] : '' })
+  })), { temporarySample: sampleCompanyIds.size > 0, sampleOnly,
+    completeAsOf: sampleOnly && data.employees.length ? '2025-12-31' : rosterDates.length && rosterDates.every(Boolean) ? rosterDates.sort()[0] : '' })
 
   stages.employeeHistory = stage(data.employeeHistory.map((row) => ({
     ...addCompany(row), employeeId: employeeById.get(row.employee_id)?.employee_code || '', department: departmentById.get(row.department_id) || '',
@@ -131,7 +144,7 @@ function buildStages(data, metadataAllowed) {
     ...addCompany(row), employeeId: employeeById.get(row.employee_id)?.employee_code || '', effectiveDate: row.effective_date,
     currentCtc: row.current_ctc, revisedCtc: row.revised_ctc, incrementPercentage: row.increment_percentage, approvalStatus: row.approval_status,
   })), monthMetadata('increment'))
-  stages.projectMaster = stage(data.projects.map((row) => ({ ...addCompany(row), projectId: row.project_code, projectRecordId: row.id, projectName: row.project_name })), { complete: allCompaniesComplete('project_master') })
+  stages.projectMaster = stage(data.projects.map((row) => ({ ...addCompany(row), projectId: row.project_code, projectRecordId: row.id, projectName: row.project_name })), { complete: (sampleOnly && data.projects.length > 0) || allCompaniesComplete('project_master') })
   stages.projectAllocation = stage(data.allocations.map((row) => ({
     ...addCompany(row), employeeId: employeeById.get(row.employee_id)?.employee_code || '', projectId: projectById.get(row.project_id)?.project_code || '',
     reportingMonth: monthOf(row.reporting_month), allocationPercentage: row.allocation_percentage, monthlyGrossCost: row.monthly_gross_cost,
