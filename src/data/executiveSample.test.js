@@ -11,6 +11,7 @@ describe('versioned Executive Preview sample', () => {
       expect(row.absenceRate).toBeCloseTo(100 * row.absent / row.scheduled)
       expect(row.attendanceRate).toBeCloseTo(100 * (row.scheduled - row.absent - row.leaveDays) / row.scheduled)
       expect(row.training).toBeGreaterThan(0)
+      expect(row.trainingByProgram.reduce((total, program) => total + program.hours, 0)).toBe(row.training)
       expect(row.openActions).toBe(row.actionRows.filter(({ status }) => status !== 'Complete').length)
       const funnel = Object.values(row.recruitment)
       expect(funnel).toEqual([...funnel].sort((a, b) => b - a))
@@ -21,8 +22,9 @@ describe('versioned Executive Preview sample', () => {
       expect(row.active.every((person) => person.age - person.tenureYears >= 21)).toBe(true)
     }
     expect(history.at(-1).exits).toBeGreaterThan(0)
+    expect(getExecutiveSample('2025-12').reportingYearLeaveAccrued).toBeGreaterThan(getExecutiveSample('2025-12').reportingYearLeave)
     expect(SAMPLE_NOTICE).toContain('NOT ACTUAL ADTL REPORTING')
-    expect(SAMPLE_VERSION).toContain('v1')
+    expect(SAMPLE_VERSION).toContain('v2')
   })
 
   it('keeps the filtered cohort and action attributes consistent and respects the as-of date', () => {
@@ -44,5 +46,14 @@ describe('versioned Executive Preview sample', () => {
     const { current, selectedDate } = getExecutiveSample('2025-02', '2025-02-31', { department: 'Missing' })
     expect(selectedDate).toBe('2025-02-28')
     expect(current).toMatchObject({ headcount: 0, absenceRate: null, attrition: null, attendanceRate: null, training: 0, openActions: 0 })
+  })
+
+  it('uses reporting-date status and department transfers for the selected cohort', () => {
+    const exited = getExecutiveSample('2025-12', undefined, { status: 'Exited' })
+    expect(exited.current.headcount).toBe(0)
+    expect(exited.history.reduce((total, row) => total + row.exits, 0)).toBeGreaterThan(0)
+    const before = getExecutiveSample('2025-06').current.active
+    const after = getExecutiveSample('2025-07').current.active
+    expect(after.some((row) => before.some((previous) => previous.id === row.id && previous.department !== row.department))).toBe(true)
   })
 })

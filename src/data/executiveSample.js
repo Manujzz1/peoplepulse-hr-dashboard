@@ -2,7 +2,7 @@ import { demoEmployees } from './demoData'
 import { financialYearMonthsElapsed } from './reportingCalendar'
 
 export const SAMPLE_NOTICE = 'TEMPORARY SAMPLE DATA — NOT ACTUAL ADTL REPORTING'
-export const SAMPLE_VERSION = 'ADTL Executive sample v1'
+export const SAMPLE_VERSION = 'ADTL Executive sample v2'
 export const SAMPLE_MONTHS = Array.from({ length: 12 }, (_, index) => '2025-' + String(index + 1).padStart(2, '0'))
 const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const date = (month, day) => month + '-' + String(day).padStart(2, '0')
@@ -20,9 +20,18 @@ const roster = demoEmployees.map((row, index) => ({
   exitDate: index < 96 && index % 7 === 0 ? date(SAMPLE_MONTHS[(index / 7) % 12], 11 + index % 11) : null,
   birthDate: String(Number(row.hireDate.slice(0, 4)) - 21 - index % 28) + '-' + row.hireDate.slice(5),
   monthlyBase: row.monthlyBase, leader: index % 9 === 0, disability: index % 29 === 0,
+  transfer: index < 80 && index % 16 === 0 ? { date: '2025-07-01', department: row.department === 'Operations' ? 'Engineering' : 'Operations' } : null,
 }))
 export const SAMPLE_FILTERS = Object.fromEntries(['department', 'location', 'employmentType'].map((key) =>
   [key, [...new Set(roster.map((row) => row[key]))].sort()]))
+SAMPLE_FILTERS.status = ['Active', 'Exited', 'Not yet joined']
+
+function statusAt(row, asOf) {
+  if (row.hireDate > asOf) return 'Not yet joined'
+  return row.exitDate && row.exitDate <= asOf ? 'Exited' : 'Active'
+}
+
+const departmentAt = (row, asOf) => row.transfer && row.transfer.date <= asOf ? row.transfer.department : row.department
 
 const actionTemplates = [
   ['Review access attestations', 'HR Operations', 'High'],
@@ -31,13 +40,14 @@ const actionTemplates = [
   ['Validate onboarding documents', 'Talent Acquisition', 'Low'],
   ['Review leave reconciliation', 'People Services', 'Medium'],
 ]
+const trainingPrograms = ['Security awareness', 'Manager essentials', 'Payroll controls', 'Workplace safety']
 
 function summarize(people, month, asOf) {
   const start = date(month, 1)
   const index = SAMPLE_MONTHS.indexOf(month)
   const opening = people.filter((row) => row.hireDate < start && (!row.exitDate || row.exitDate >= start)).length
   const active = people.filter((row) => row.hireDate <= asOf && (!row.exitDate || row.exitDate > asOf))
-    .map((row) => ({ ...row, age: yearsAt(row.birthDate, asOf), tenureYears: yearsAt(row.hireDate, asOf) }))
+    .map((row) => ({ ...row, department: departmentAt(row, asOf), age: yearsAt(row.birthDate, asOf), tenureYears: yearsAt(row.hireDate, asOf) }))
   const hires = people.filter((row) => row.hireDate >= start && row.hireDate <= asOf)
   const exits = people.filter((row) => row.exitDate >= start && row.exitDate <= asOf).length
   const records = people.flatMap((row) => {
@@ -49,7 +59,10 @@ function summarize(people, month, asOf) {
       if (weekday === 0 || weekday === 6 || dayDate < row.hireDate || (row.exitDate && dayDate >= row.exitDate)) continue
       const absence = Number((id * 7 + day * 11 + index * 13) % 53 < 2)
       const leave = Number(!absence && (id * 11 + day * 7 + index) % 41 < 2)
-      daily.push({ scheduled: 1, absence, leave, present: 1 - absence - leave, gross: row.monthlyBase / workingDays(month), training: !absence && !leave && (id + 2 * day + index) % 11 === 0 ? 2 + id % 3 : 0 })
+      const training = !absence && !leave && (id + 2 * day + index) % 11 === 0
+        ? { program: trainingPrograms[(id + day + index) % trainingPrograms.length], hours: 2 + id % 3 }
+        : null
+      daily.push({ scheduled: 1, absence, leave, present: 1 - absence - leave, gross: row.monthlyBase / workingDays(month), leaveAccrued: 2 / workingDays(month), training })
     }
     return daily.length ? [{ ...row, daily }] : []
   })
@@ -67,22 +80,28 @@ function summarize(people, month, asOf) {
     const [action, owner, priority] = actionTemplates[i % actionTemplates.length]
     const due = new Date(Date.UTC(2025, index, 16 + i % 12 + (i % 3 === 0 ? 18 : 0))).toISOString().slice(0, 10)
     const completed = i % 4 === 0 && asOf >= date(month, 5 + i % 10)
-    return { id: row.id, action: action + ' · ' + row.department, owner, priority, due, status: completed ? 'Complete' : due < asOf ? 'Overdue' : i % 2 ? 'In progress' : 'Open' }
+    return { id: row.id, action: action + ' · ' + departmentAt(row, asOf), owner, priority, due, status: completed ? 'Complete' : due < asOf ? 'Overdue' : i % 2 ? 'In progress' : 'Open' }
   })
-  const opportunities = hires.length + records.filter((row) => (Number(row.id.slice(4)) + index) % 11 === 0).length
-  const positionsFilled = hires.length
-  const offersAccepted = positionsFilled + opportunities
-  const offersExtended = offersAccepted + opportunities
-  const interviewed = offersExtended + opportunities * 2
-  const screened = interviewed + opportunities * 3
-  const applications = screened + opportunities * 4
+  const requisitions = [
+    ...hires.map((row) => ({ id: row.id, positionsFilled: 1, offersAccepted: 1, offersExtended: 2, interviewed: 4, screened: 7, applications: 12 })),
+    ...records.filter((row) => (Number(row.id.slice(4)) + index) % 11 === 0).map((row) => {
+      const offersAccepted = Number(row.id.slice(4)) % 2
+      return { id: row.id, positionsFilled: 0, offersAccepted, offersExtended: offersAccepted + 1, interviewed: offersAccepted + 3, screened: offersAccepted + 6, applications: offersAccepted + 10 }
+    }),
+  ]
+  const recruitment = Object.fromEntries(['applications', 'screened', 'interviewed', 'offersExtended', 'offersAccepted', 'positionsFilled']
+    .map((key) => [key, sum(requisitions, key)]))
+  const completions = daily.flatMap((row) => row.training ? [row.training] : [])
   return {
     month: labels[index], reportingMonth: month, headcount: active.length, opening, active, joiners: hires.length, exits,
     attrition: rate(exits, (opening + active.length) / 2), scheduled, absent, absenceRate: rate(absent, scheduled),
-    attendanceRate: rate(present, scheduled), leaveDays, training: sum(daily, 'training'), payroll: gross, payrollComplete: true,
+    attendanceRate: rate(present, scheduled), leaveDays, leaveAccrued: sum(daily, 'leaveAccrued'),
+    training: sum(completions, 'hours'), trainingCompletions: completions.length,
+    trainingByProgram: trainingPrograms.map((program) => ({ program, hours: sum(completions.filter((row) => row.program === program), 'hours') })),
+    payroll: gross, payrollComplete: true,
     annualCtc: Math.round(active.reduce((total, row) => total + row.monthlyBase * 12 * 1.15, 0)),
     openActions: actionRows.filter(({ status }) => status !== 'Complete').length, actionRows,
-    recruitment: { applications, screened, interviewed, offersExtended, offersAccepted, positionsFilled },
+    recruitment,
     engagement: { responses: responses.length, promoters, passives: responses.length - promoters - detractors, detractors, enps: rate(promoters - detractors, responses.length) },
     womenInLeadership: rate(active.filter((row) => row.leader && row.gender === 'Female').length, active.filter((row) => row.leader).length),
     disabilityRepresentation: rate(active.filter((row) => row.disability).length, active.length),
@@ -100,9 +119,13 @@ export function getExecutiveSample(month, asOf, filters = {}, financialYearStart
   if (!SAMPLE_MONTHS.includes(month)) return null
   const end = getMonthEnd(month)
   const selectedDate = /^2025-\d{2}-\d{2}$/.test(asOf) && asOf.startsWith(month + '-') && asOf >= date(month, 1) && asOf <= end ? asOf : end
-  const people = roster.filter((row) => Object.keys(SAMPLE_FILTERS).every((key) => !filters[key] || row[key] === filters[key]))
+  const people = roster.filter((row) => Object.keys(SAMPLE_FILTERS).every((key) =>
+    !filters[key] || (key === 'status' ? statusAt(row, selectedDate) : key === 'department' ? departmentAt(row, selectedDate) : row[key]) === filters[key]))
   const history = SAMPLE_MONTHS.filter((period) => period <= month)
     .map((period) => summarize(people, period, period === month ? selectedDate : getMonthEnd(period)))
   const current = history.at(-1)
-  return { current, history, selectedDate, monthEnd: selectedDate === end, reportingYearLeave: sum(history.slice(-financialYearMonthsElapsed(month, financialYearStartMonth)), 'leaveDays') }
+  const reportingYear = history.slice(-financialYearMonthsElapsed(month, financialYearStartMonth))
+  const reportingYearLeave = sum(reportingYear, 'leaveDays')
+  const reportingYearLeaveAccrued = sum(reportingYear, 'leaveAccrued')
+  return { current, history, selectedDate, monthEnd: selectedDate === end, reportingYearLeave, reportingYearLeaveAccrued }
 }

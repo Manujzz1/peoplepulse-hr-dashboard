@@ -84,7 +84,7 @@ test('populates the isolated Executive sample, labels exports and switches to sc
   if (screenshot) await page.screenshot({ path: screenshot.replace(/\.png$/, '-mobile.png'), fullPage: true, animations: 'disabled' })
   await page.setViewportSize({ width: 1366, height: 768 })
   await sample.getByLabel('Month', { exact: true }).selectOption('2025-06')
-  await sample.getByLabel('As of date').fill('2025-06-15')
+  await sample.getByLabel('As of date', { exact: true }).fill('2025-06-15')
   await sample.getByLabel('Department', { exact: true }).selectOption('Engineering')
   await sample.getByLabel('Location', { exact: true }).selectOption('Bengaluru')
   await sample.getByLabel('Employment type', { exact: true }).selectOption('Permanent')

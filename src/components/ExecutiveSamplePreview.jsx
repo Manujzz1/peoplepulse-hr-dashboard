@@ -4,6 +4,7 @@ import { getExecutiveSample, SAMPLE_FILTERS, SAMPLE_MONTHS, SAMPLE_NOTICE, SAMPL
 import { serializeCsv } from '../data/csv'
 
 const headers = ['Source', 'Dataset', 'Scope', 'Period', 'Category', 'Metric', 'Value']
+const filterLabels = { department: 'Department', location: 'Location', employmentType: 'Employment type', status: 'Employee status as of date' }
 const readable = (value) => value == null ? 'Unavailable' : typeof value === 'number' ? Math.round(value * 100) / 100 : value
 
 function saveCsv(rows) {
@@ -83,14 +84,15 @@ export default function ExecutiveSamplePreview() {
     <div className="exec-sample-controls">
       <label>Month<select aria-label="Month" value={month} onChange={(event) => { setMonth(event.target.value); setDate('') }}>{SAMPLE_MONTHS.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>As of date<input aria-label="As of date" type="date" value={selectedDate} min={month + '-01'} max={month + '-' + new Date(Date.UTC(2025, Number(month.slice(-2)), 0)).getUTCDate()} onChange={(event) => setDate(event.target.value)} /></label>
-      {Object.entries(SAMPLE_FILTERS).map(([key, values]) => <label key={key}>{{ department: 'Department', location: 'Location', employmentType: 'Employment type' }[key]}
-        <select aria-label={{ department: 'Department', location: 'Location', employmentType: 'Employment type' }[key]} value={filters[key] || ''} onChange={(event) => setFilters({ ...filters, [key]: event.target.value })}><option value="">All</option>{values.map((value) => <option key={value}>{value}</option>)}</select>
+      {Object.entries(SAMPLE_FILTERS).map(([key, values]) => <label key={key}>{filterLabels[key]}
+        <select aria-label={filterLabels[key]} value={filters[key] || ''} onChange={(event) => setFilters({ ...filters, [key]: event.target.value })}><option value="">All</option>{values.map((value) => <option key={value}>{value}</option>)}</select>
       </label>)}
       <label>Reporting year starts<select aria-label="Reporting year starts" value={financialYearStartMonth} onChange={(event) => setFinancialYearStartMonth(Number(event.target.value))}>{SAMPLE_MONTHS.map((value, index) => <option value={index + 1} key={value}>{new Intl.DateTimeFormat('en-IN', { month: 'short', timeZone: 'UTC' }).format(new Date(value + '-01T00:00:00Z'))}</option>)}</select></label>
       <span className="exec-sample-period">Reporting period {month}-01 to {selectedDate}</span>
       {['CSV', 'Excel', 'PDF'].map((label, index) => <button type="button" className="stage-button" key={label} disabled={exporting} onClick={() => exportReport(['csv', 'xlsx', 'pdf'][index])}>{label}</button>)}
       <button type="button" className="stage-button" onClick={() => window.print()}>Print</button>
     </div>
+    <p className="exec-note">Department and employee status select the cohort as of the reporting date. Trend charts follow that same cohort across earlier months.</p>
     <p className="exec-sample-print-scope">{scope} · {month}-01 to {selectedDate}</p>
     {exportError && <p role="alert">{exportError}</p>}
     <ExecutiveDashboard metrics={metrics} trends={history} month={month} monthEnd financialYearStartMonth={financialYearStartMonth}

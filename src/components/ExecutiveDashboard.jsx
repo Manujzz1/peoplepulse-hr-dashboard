@@ -112,7 +112,10 @@ export default function ExecutiveDashboard({ metrics, trends, month, monthEnd, f
       <Panel title="Years of service"><Breakdown category="Years of service" rows={tenure} /></Panel>
       <Panel title="Recruitment versus exits"><Trend rows={history} /></Panel>
       <Panel title="Absence trends">{current ? <Trend rows={history} series={{ key: 'absenceRate', name: 'Absence rate (%)', line: true, percent: true }} /> : unavailable(absenceReason)}</Panel>
-      <Panel title="Training and competency">{current ? <Trend rows={history} series={{ key: 'training', name: 'Training hours' }} /> : unavailable(trainingReason)}</Panel>
+      <Panel title="Training and competency">{current ? <>
+        <Trend rows={history} series={{ key: 'training', name: 'Training hours' }} />
+        <Facts category="Training program hours" rows={current.trainingByProgram.map(({ program, hours }) => [program, display(hours)])} />
+      </> : unavailable(trainingReason)}</Panel>
       <Panel title="HR action priorities">{current ? <Breakdown donut category="Open HR actions by priority" rows={group(current.actionRows.filter(({ status }) => status !== 'Complete'), (row) => row.priority)} /> : unavailable(actionsReason)}</Panel>
     </div>
     <div className="exec-grid exec-grid-six">
@@ -129,6 +132,8 @@ export default function ExecutiveDashboard({ metrics, trends, month, monthEnd, f
         ['Reported average attendance', attendanceAvailable ? percent(attendance.averagePercentage) : 'Unavailable'],
         ['Attendance records measured', attendanceAvailable ? display(attendance.measuredEmployeeCount) : 'Unavailable'],
         ['Leave used, reporting year', canReadLeave && leave.complete ? display(leave.availedDays) + ' days' : 'Unavailable'],
+        ...(current ? [['Leave accrued, reporting year', display(sample.reportingYearLeaveAccrued) + ' days'],
+          ['Leave balance, accrued less used', display(sample.reportingYearLeaveAccrued - sample.reportingYearLeave) + ' days']] : []),
       ]} /><p className="exec-note">{current ? 'Attendance is present days divided by scheduled days. Leave totals run from the reporting-year start through the selected date.' : 'Attendance needs month-end records. Leave totals require complete reporting-year coverage and leave access.'}</p></Panel>
       <Panel title="Diversity metrics"><Facts category="Management summary" rows={[
         ['Gender recorded', employees.length ? percent(knownGender.reduce((sum, row) => sum + row.value, 0) / employees.length * 100) : 'Unavailable'],

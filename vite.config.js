@@ -2,17 +2,24 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { readSupabaseConfig } from './src/auth/supabaseConfig.js'
 
+const standaloneSample = process.env.PEOPLEPULSE_STANDALONE_SAMPLE === 'true'
+
 // https://vite.dev/config/
 export default defineConfig({
   // Local tests can opt in. A Vercel production build excludes the fixture even if the flag is set.
   define: { __EXECUTIVE_SAMPLE_ALLOWED__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
   plugins: [
     react(),
+    standaloneSample && {
+      name: 'peoplepulse-standalone-sample',
+      transformIndexHtml: { order: 'pre', handler: (html) => html.replace('/src/main.jsx', '/src/sampleMain.jsx') },
+    },
     {
       name: 'peoplepulse-supabase-config',
       apply: 'build',
       configResolved({ env }) {
         const { provided, configured } = readSupabaseConfig(env)
+        if (standaloneSample) return
         if (!configured && (provided || process.env.VERCEL_ENV === 'production')) {
           throw new Error('Set VITE_SUPABASE_URL and a public VITE_SUPABASE_PUBLISHABLE_KEY before building PeoplePulse.')
         }
