@@ -16,7 +16,7 @@ export default defineConfig({
     timeout: 30_000,
   },
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: process.env.PEOPLEPULSE_E2E_URL || 'http://127.0.0.1:5173',
     browserName: 'chromium',
     channel: process.platform === 'win32' ? 'chrome' : undefined,
     headless: true,

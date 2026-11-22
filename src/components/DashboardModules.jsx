@@ -36,7 +36,8 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
   )
 
   const exportCsv = () => {
-    const rows = filtered.map((employee) => tableColumns.map(({ key, format }) => format ? format(employee[key]) : employee[key]))
+    const rows = filtered.map((employee) => tableColumns.map(({ key, format }) =>
+      employee[key] != null && format ? format(employee[key]) : employee[key]))
     const csv = serializeCsv(tableColumns.map((column) => column.label), rows, sourceLabel)
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
@@ -67,8 +68,8 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
                       : key === 'department'
                         ? <span className="department-cell"><i />{employee[key]}</span>
                         : key === 'performanceScore'
-                          ? <span className="score-pill">{format ? format(employee[key]) : employee[key]}</span>
-                          : format ? format(employee[key]) : employee[key]}
+                          ? <span className="score-pill">{employee[key] == null ? 'Unavailable' : format ? format(employee[key]) : employee[key]}</span>
+                          : employee[key] == null ? 'Unavailable' : format ? format(employee[key]) : employee[key]}
                   </td>
                 ))}
               </tr>

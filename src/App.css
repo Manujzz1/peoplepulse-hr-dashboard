@@ -306,10 +306,10 @@
 .page-header p { margin: 8px 0 0; color: #8990a0; font-size: 11px; }
 .page-header-actions { padding-bottom: 3px; }
 .updated-note { display: flex; align-items: center; gap: 8px; color: #959ba9; font-size: 10px; }
-.filter-bar { display: flex; align-items: center; min-height: 53px; gap: 10px; padding: 8px 12px; border: 1px solid #e8eaf0; border-radius: 9px; background: #fff; box-shadow: 0 2px 6px #202b4805; }
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; min-height: 53px; gap: 10px; padding: 8px 12px; border: 1px solid #e8eaf0; border-radius: 9px; background: #fff; box-shadow: 0 2px 6px #202b4805; }
 .filter-label { display: flex; align-items: center; gap: 8px; margin-right: 5px; padding: 0 7px; color: #5d6576; font-size: 10px; font-weight: 650; }
 .filter-label i { width: 1px; height: 22px; background: #e8eaf0; }
-.filter-control { position: relative; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px; border: 1px solid #ebedf2; border-radius: 6px; color: #858c9a; background: #fff; }
+.filter-control { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 32px; padding: 0 9px; border: 1px solid #ebedf2; border-radius: 6px; color: #858c9a; background: #fff; }
 .filter-control select { width: auto; max-width: 165px; appearance: none; padding: 0 15px 0 0; border: 0; outline: 0; color: #545d6f; background: transparent; font-size: 10px; cursor: pointer; }
 .filter-control select:focus-visible { outline: 2px solid #aebcff; outline-offset: 3px; }
 .period-comparison-panel { margin-bottom: 15px; }
@@ -515,7 +515,6 @@ tbody tr:hover { background: #fafbff; }
   .login-preview { display: none; }
   .login-showcase-foot { margin-top: 18px; }
   .login-card { padding: 29px 24px; }
-  body { min-width: 360px; }
   .sidebar { width: 250px; transform: translateX(-100%); box-shadow: 8px 0 30px #17203a26; }
   .sidebar.is-open { transform: translateX(0); }
   .sidebar.is-open .brand-copy, .sidebar.is-open .workspace-copy, .sidebar.is-open .workspace-chevron, .sidebar.is-open .nav-heading, .sidebar.is-open .nav-item span, .sidebar.is-open .data-note > span:last-child, .sidebar.is-open .collapse-button span { display: initial; }
@@ -539,9 +538,10 @@ tbody tr:hover { background: #fafbff; }
   .main-content, .main-content.sidebar-collapsed { margin-left: 0; }
   .topbar { height: 58px; padding: 0 15px; }
   .mobile-menu { display: grid; margin-right: 7px; }
-  .breadcrumb { flex: 1; gap: 7px; overflow: hidden; font-size: 9px; white-space: nowrap; }
+  .breadcrumb { flex: 1; min-width: 0; gap: 7px; overflow: hidden; font-size: 9px; white-space: nowrap; }
   .breadcrumb b { overflow: hidden; text-overflow: ellipsis; }
   .topbar-right { gap: 7px; }
+  .topbar-right > .help-button > span { display: none; }
   .user-copy, .data-badge { display: none; }
   .topbar-source { padding-inline: 6px; }
   .topbar-source > span { display: none; }

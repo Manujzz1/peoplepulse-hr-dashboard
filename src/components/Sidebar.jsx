@@ -43,7 +43,7 @@ const navigation = [
   ] },
 ]
 
-export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, mobileOpen, onClose, availablePages }) {
+export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, mobileOpen, onClose, availablePages, workspaceName = 'Organisation workspace' }) {
   return (
     <>
       <button
@@ -61,8 +61,8 @@ export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, m
           <button className="mobile-close icon-button" onClick={onClose} aria-label="Close menu"><X size={18} /></button>
         </div>
         <div className="workspace-switch">
-          <div className="workspace-avatar">N</div>
-          <div className="workspace-copy"><strong>Northstar Labs</strong><span>People team</span></div>
+          <div className="workspace-avatar">{workspaceName.slice(0, 1).toUpperCase()}</div>
+          <div className="workspace-copy"><strong title={workspaceName}>{workspaceName}</strong><span>HR Analytics</span></div>
           <ChevronRight className="workspace-chevron" size={15} />
         </div>
         <nav className="side-nav" aria-label="Main navigation">

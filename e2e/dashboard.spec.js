@@ -22,7 +22,7 @@ test.afterEach(async ({ page }) => {
   expect(browserErrors.get(page), 'browser console and unhandled promise errors').toEqual([])
 })
 
-const fixtureHost = 'https://peoplepulse-e2e.test'
+const fixtureHost = process.env.PEOPLEPULSE_E2E_API || 'https://peoplepulse-e2e.test'
 const organization = { id: 'synthetic-org', organization_name: 'Synthetic test organization' }
 const company = { id: 'synthetic-adtl', company_key: 'adtl', company_name: 'Alpha Design Technologies Pvt. Ltd.', organization_id: organization.id, currency_code: 'INR' }
 const user = { id: 'synthetic-user', email: 'analyst@example.test', role: 'authenticated', aud: 'authenticated', is_anonymous: false }
@@ -56,6 +56,7 @@ async function enterWorkspace(page) {
   await page.getByLabel('Password').fill('synthetic-fixture-password')
   await page.getByRole('button', { name: 'Sign in securely' }).click()
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Period comparisons' })).toBeVisible()
   await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
 }
 
@@ -71,6 +72,12 @@ test('requires an organization session and clears access on sign-out', async ({ 
 
 test('loads labelled ADTL data for employee, payroll and attendance views and filters', async ({ page }) => {
   await enterWorkspace(page)
+  await expect(page.locator('.workspace-copy strong')).toHaveText(company.company_name)
+  for (const width of [1280, 1024, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
   await page.getByLabel('Company').selectOption(company.company_name)
   await page.getByRole('button', { name: 'Employee Master' }).click()
   await expect(page.locator('.table-count')).toContainText('120 of 120 records')

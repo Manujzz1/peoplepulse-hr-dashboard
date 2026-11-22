@@ -22,18 +22,6 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
-  build: {
-    rolldownOptions: {
-      output: {
-        codeSplitting: {
-          groups: [
-            { name: 'react-vendor', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 30 },
-            { name: 'exceljs-vendor', test: /node_modules[\\/]exceljs[\\/]/, priority: 25 },
-            { name: 'charts-vendor', test: /node_modules[\\/](recharts|d3-[^\\/]+)[\\/]/, minSize: 20_000, maxSize: 400_000, priority: 20 },
-            { name: 'vendor', test: /node_modules[\\/]/, minSize: 20_000, maxSize: 400_000, priority: 10 },
-          ],
-        },
-      },
-    },
-  },
+  // Let Rolldown preserve module initialization order across lazy imports.
+  // The forced Recharts split evaluated axis defaults before their constants.
 })

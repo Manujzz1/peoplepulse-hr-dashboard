@@ -218,6 +218,7 @@ function App() {
     return ['All companies', ...new Set(companies), ...(hasUnassigned ? ['Not specified'] : [])]
   }, [dataSource, stagedCompanyRows, liveWorkspaceState.workspace, organization])
   const effectiveCompany = companyOptions.includes(company) ? company : 'All companies'
+  const workspaceName = effectiveCompany === 'All companies' && companyOptions.length === 2 ? companyOptions[1] : effectiveCompany
   const currentStages = useMemo(() => dataSource === 'live'
     ? scopedLiveStages(liveWorkspaceState.workspace, organization, effectiveCompany)
     : stagedImports, [dataSource, liveWorkspaceState.workspace, organization, effectiveCompany, stagedImports])
@@ -489,6 +490,7 @@ function App() {
   return (
     <div className="app-shell">
       <Sidebar
+        workspaceName={workspaceName}
         activePage={activeView}
         onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }}
         collapsed={collapsed}

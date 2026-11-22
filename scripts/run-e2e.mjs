@@ -1,21 +1,24 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
-import { createServer } from 'vite'
+import { build, preview } from 'vite'
 
 const root = process.cwd()
 process.env.VITE_SUPABASE_URL = 'https://peoplepulse-e2e.test'
 process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_local_browser_fixture'
 process.env.VITE_ENABLE_LIVE_IMPORTS = 'false'
 
-const server = await createServer({
-  configFile: resolve(root, 'vite.config.js'),
-  server: { host: '127.0.0.1', port: 5173, strictPort: true },
+const configFile = resolve(root, 'vite.config.js')
+const buildOptions = { outDir: 'node_modules/.cache/peoplepulse-e2e-site', emptyOutDir: true }
+await build({ configFile, build: buildOptions })
+const server = await preview({
+  configFile,
+  build: buildOptions,
+  preview: { host: '127.0.0.1', port: 5173, strictPort: true },
 })
 
 let child
 let exitCode = 1
 try {
-  await server.listen()
   child = spawn(process.execPath, [
     resolve(root, 'node_modules/@playwright/test/cli.js'),
     'test',
@@ -31,7 +34,7 @@ try {
   })
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) child.kill()
-  await server.close()
+  await new Promise((resolve) => server.httpServer.close(resolve))
 }
 
 process.exitCode = exitCode
