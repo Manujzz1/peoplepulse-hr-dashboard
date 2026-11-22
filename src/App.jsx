@@ -17,6 +17,8 @@ import { inspectImportBatch, submitImportBatch, transitionImportBatch } from './
 const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
 const ExecutiveDashboard = lazy(() => import('./components/ExecutiveDashboard'))
+const ExecutiveSamplePreview = __EXECUTIVE_SAMPLE_ALLOWED__ && import.meta.env.VITE_EXECUTIVE_SAMPLE_MODE === 'true'
+  ? lazy(() => import('./components/ExecutiveSamplePreview')) : null
 const ReportsCenter = lazy(() => import('./components/ReportsCenter'))
 const PlanningModules = lazy(() => import('./components/PlanningModules'))
 const EmployeeDirectory = lazy(() => import('./components/EmployeeDirectory'))
@@ -199,6 +201,8 @@ function App() {
     return scope === null || scope.length > 0
   }), [permissionPages, accessProfile, allowedReportKeys])
   const activeView = availablePages.includes(activePage) ? activePage : availablePages[0] || 'executive'
+  const [executiveSampleSelected, setExecutiveSampleSelected] = useState(true)
+  const showExecutiveSample = activeView === 'executive' && ExecutiveSamplePreview && executiveSampleSelected
   const pageDepartmentScope = useMemo(() => authenticatedAccessReady
     ? getDepartmentScope(accessProfile, permissionsForPage(activeView, allowedReportKeys))
     : null, [authenticatedAccessReady, accessProfile, activeView, allowedReportKeys])
@@ -506,8 +510,9 @@ function App() {
           <button className="mobile-menu icon-button" aria-label="Open menu" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
           <div className="breadcrumb"><span>People analytics</span><i>/</i><b>{title}</b></div>
           <div className="topbar-right">
-            <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}{canImport && <option value="imported">Local import preview</option>}</select></label>
-            <span className="data-badge staging-badge"><i /> {dataSource === 'live' ? hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS data' : 'Local preview'}</span>
+            {!showExecutiveSample && <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}{canImport && <option value="imported">Local import preview</option>}</select></label>}
+            {activeView === 'executive' && ExecutiveSamplePreview && <button type="button" className="help-button" onClick={() => setExecutiveSampleSelected(!executiveSampleSelected)}>{showExecutiveSample ? 'Show workspace data' : 'Show fictional sample'}</button>}
+            <span className="data-badge staging-badge"><i /> {showExecutiveSample ? 'Fictional sample preview' : dataSource === 'live' ? hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS data' : 'Local preview'}</span>
             <NotificationsCenter items={notificationItems} onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
             <HelpCenter onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
             <div className="user-avatar">{(authSession?.user?.email || 'U').slice(0, 1).toUpperCase()}</div>
@@ -518,10 +523,12 @@ function App() {
         </header>
         <div className="page-content">
           <div className="page-header">
-            <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
-            <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>
+            <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {showExecutiveSample ? 'FICTIONAL SAMPLE PREVIEW' : activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
+            {!showExecutiveSample && <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>}
           </div>
-          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : !currentStages.employeeMaster?.sampleOnly && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
+          {showExecutiveSample ? <AppErrorBoundary moduleTitle={title}>
+            <Suspense fallback={<div className="source-mode-empty">Loading Executive sample preview…</div>}><ExecutiveSamplePreview /></Suspense>
+          </AppErrorBoundary> : activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : !currentStages.employeeMaster?.sampleOnly && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
             <section className="source-mode-empty">
               <div className="source-mode-icon"><Database size={22} /></div>
               <p className="eyebrow">IMPORTED DATA Â· {reportingMonth}</p>
@@ -568,7 +575,7 @@ function App() {
           </Suspense>
           </AppErrorBoundary>
           </>}
-          <footer className="app-footer"><span>PeoplePulse <i>Â·</i> HR Analytics</span><span>{dataSource === 'imported' ? 'Imported source · no file upload to a server' : sourceLabel}</span></footer>
+          <footer className="app-footer"><span>PeoplePulse <i>Â·</i> HR Analytics</span><span>{showExecutiveSample ? 'Fictional sample preview' : dataSource === 'imported' ? 'Imported source · no file upload to a server' : sourceLabel}</span></footer>
         </div>
       </main>
     </div>

@@ -4,6 +4,8 @@ import { readSupabaseConfig } from './src/auth/supabaseConfig.js'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Local tests can opt in. A Vercel production build excludes the fixture even if the flag is set.
+  define: { __EXECUTIVE_SAMPLE_ALLOWED__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
   plugins: [
     react(),
     {

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import { createSampleRows } from '../scripts/adtl-sample-seed.mjs'
 
 const browserErrors = new WeakMap()
@@ -59,6 +60,62 @@ async function enterWorkspace(page) {
   await expect(page.getByRole('heading', { name: 'Period comparisons' })).toBeVisible()
   await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
 }
+
+test('populates the isolated Executive sample, labels exports and switches to scoped workspace data', async ({ page }, testInfo) => {
+  test.skip(process.env.PEOPLEPULSE_SAMPLE_TEST !== '1', 'Requires the opt-in Preview build')
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await openLogin(page)
+  await page.getByLabel('Email address').fill(user.email)
+  await page.getByLabel('Password').fill('synthetic-fixture-password')
+  await page.getByRole('button', { name: 'Sign in securely' }).click()
+  const sample = page.locator('#executive-sample-preview')
+  const notice = 'TEMPORARY SAMPLE DATA — NOT ACTUAL ADTL REPORTING'
+  await expect(sample.getByText(notice, { exact: true })).toBeVisible()
+  await expect(sample.locator('.exec-tile')).toHaveCount(8)
+  await expect(sample.locator('.exec-tile[data-unavailable="true"]')).toHaveCount(0)
+  await expect(sample.locator('.exec-unavailable')).toHaveCount(0)
+  await expect(sample.locator('.exec-chart')).toHaveCount(4)
+  for (const chart of await sample.locator('.exec-chart').all()) await expect(chart.locator('svg.recharts-surface').first()).toBeVisible()
+  await expect(sample.getByRole('region', { name: 'HR Checklist table' }).locator('tbody td').first()).toHaveText(/Complete|Open|In progress|Overdue/)
+  const screenshot = process.env.PEOPLEPULSE_EXECUTIVE_SCREENSHOT
+  if (screenshot) await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+  if (screenshot) await page.screenshot({ path: screenshot.replace(/\.png$/, '-mobile.png'), fullPage: true, animations: 'disabled' })
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await sample.getByLabel('Month', { exact: true }).selectOption('2025-06')
+  await sample.getByLabel('As of date').fill('2025-06-15')
+  await sample.getByLabel('Department', { exact: true }).selectOption('Engineering')
+  await sample.getByLabel('Location', { exact: true }).selectOption('Bengaluru')
+  await sample.getByLabel('Employment type', { exact: true }).selectOption('Permanent')
+  await expect(sample.getByText('Reporting period 2025-06-01 to 2025-06-15')).toBeVisible()
+  await expect(sample.locator('.exec-tile').filter({ hasText: 'Active Employees' }).locator('strong')).toHaveText(/^\d{1,2}$/)
+  for (const [label, extension] of [['CSV', 'csv'], ['Excel', 'xlsx'], ['PDF', 'pdf']]) {
+    const [download] = await Promise.all([page.waitForEvent('download'), sample.getByRole('button', { name: label, exact: true }).click()])
+    const path = testInfo.outputPath('executive-sample.' + extension)
+    await download.saveAs(path)
+    const bytes = await readFile(path)
+    if (extension === 'csv') {
+      expect(bytes.toString()).toContain(notice)
+      expect(bytes.toString()).toContain('Engineering / Bengaluru / Permanent')
+    } else if (extension === 'xlsx') {
+      const cell = execFileSync(process.execPath, ['-e', 'const w = new (require("exceljs").Workbook)(); w.xlsx.readFile(process.argv[1]).then(() => console.log(w.worksheets[0].getCell("A1").value))', path], { encoding: 'utf8' })
+      expect(cell.trim()).toBe(notice)
+    } else {
+      expect(bytes.toString('latin1')).toContain('NOT ACTUAL ADTL REPORTING')
+    }
+  }
+  await page.evaluate(() => { window.print = () => document.body.setAttribute('data-print-invoked', 'true') })
+  await sample.getByRole('button', { name: 'Print', exact: true }).click()
+  await expect(page.locator('body')).toHaveAttribute('data-print-invoked', 'true')
+  await page.emulateMedia({ media: 'print' })
+  await expect(sample.getByText(notice, { exact: true })).toBeVisible()
+  await page.emulateMedia({ media: 'screen' })
+  await page.getByRole('button', { name: 'Show workspace data' }).click()
+  await expect(sample).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Period comparisons' })).toBeVisible()
+  await expect(page.getByLabel('Company', { exact: true })).toBeVisible()
+})
 
 test('requires an organization session and clears access on sign-out', async ({ page }) => {
   if (process.env.PEOPLEPULSE_EXECUTIVE_SCREENSHOT) await page.setViewportSize({ width: 1920, height: 1080 })
