@@ -16,6 +16,7 @@ import { TEMPORARY_SAMPLE_DATA } from './data/sampleData'
 import { inspectImportBatch, submitImportBatch, transitionImportBatch } from './import/remoteImport'
 const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
+const ExecutiveDashboard = lazy(() => import('./components/ExecutiveDashboard'))
 const ReportsCenter = lazy(() => import('./components/ReportsCenter'))
 const PlanningModules = lazy(() => import('./components/PlanningModules'))
 const EmployeeDirectory = lazy(() => import('./components/EmployeeDirectory'))
@@ -552,6 +553,11 @@ function App() {
           <Suspense fallback={<div className="source-mode-empty">Loading dashboard module…</div>}>
             {activeView === 'dataQuality'
               ? <DataQualityCenter model={importedModel} stagedImports={stagedImports} selectedMonth={reportingMonth} selectedDate={reportingDate} filters={filters} canReadIncrements={canReadIncrements} financialYearStartMonth={financialYearStartMonth} />
+              : activeView === 'executive'
+              ? <ExecutiveDashboard metrics={monthlyMetrics} trends={trend} month={reportingMonth} monthEnd={Number(reportingDate.slice(-2)) === lastDayOfMonth}
+                  financialYearStartMonth={financialYearStartMonth} canReadPayroll={canReadPayroll} canReadLeave={canReadLeave} sourceLabel={sourceLabel}
+                  recruitment={canReadRecruitment && location === 'All locations' && employmentType === 'All employment types' && Number(reportingDate.slice(-2)) === lastDayOfMonth && importedModel.completeness.recruitment.has(reportingMonth)
+                    ? getPlanningReport(importedModel, 'recruitment', reportingMonth, reportingDate, filters).metrics : null} />
               : employeeMasterPage
               ? <EmployeeDirectory employees={employeeDirectoryRows} asOfDate={reportingDate} sourceLabel={sourceLabel} rosterComplete={Boolean(importedModel.employeeMasterAsOf)} />
               : planningPage

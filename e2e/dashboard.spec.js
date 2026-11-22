@@ -61,13 +61,41 @@ async function enterWorkspace(page) {
 }
 
 test('requires an organization session and clears access on sign-out', async ({ page }) => {
+  if (process.env.PEOPLEPULSE_EXECUTIVE_SCREENSHOT) await page.setViewportSize({ width: 1920, height: 1080 })
   await enterWorkspace(page)
+  if (process.env.PEOPLEPULSE_EXECUTIVE_SCREENSHOT) await page.screenshot({ path: process.env.PEOPLEPULSE_EXECUTIVE_SCREENSHOT, fullPage: true, animations: 'disabled' })
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
   await expect(page.getByRole('button', { name: /demo/i })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
+})
+
+test('shows scoped Executive analytics and explains unavailable sources at all viewport sizes', async ({ page }) => {
+  await enterWorkspace(page)
+  await page.getByLabel('Month', { exact: true }).selectOption('2025-12')
+  await page.getByLabel('Company', { exact: true }).selectOption(company.company_name)
+  const dashboard = page.locator('.executive-redesign')
+  await expect(dashboard.locator('.exec-tile')).toHaveCount(8)
+  const active = dashboard.locator('.exec-tile').filter({ has: page.getByRole('heading', { name: 'Active Employees' }) })
+  await expect(active.locator('strong')).toHaveText('114')
+  for (const title of ['Headcount by department', 'Employment status', 'Gender distribution', 'Recruitment versus exits', 'HR Checklist', 'Management Insights']) {
+    await expect(dashboard.getByRole('heading', { name: title, exact: true })).toBeVisible()
+  }
+  await expect(dashboard.locator('.exec-tile').filter({ hasText: 'Training Hours' })).toContainText('Unavailable')
+  await expect(dashboard.getByRole('columnheader', { name: 'Responsible owner' })).toBeVisible()
+  await expect(dashboard.locator('.exec-panel').filter({ has: page.getByRole('heading', { name: 'Gender distribution' }) }).locator('svg.recharts-surface')).toBeVisible()
+  for (const [width, height] of [[1920, 1080], [1366, 768], [768, 1024], [390, 844]]) {
+    await page.setViewportSize({ width, height })
+    await expect.poll(() => dashboard.evaluate((root) => (
+      document.documentElement.scrollWidth === innerWidth && root.scrollWidth <= root.clientWidth
+    ))).toBe(true)
+  }
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.getByLabel('Department', { exact: true }).selectOption('Engineering')
+  await expect(active.locator('strong')).toHaveText(/^[1-9]\d?$/)
+  await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
 })
 
 test('renders Workforce for the ADTL December 2025 reporting period', async ({ page }) => {
