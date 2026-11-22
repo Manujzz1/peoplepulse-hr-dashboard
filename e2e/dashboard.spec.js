@@ -70,6 +70,25 @@ test('requires an organization session and clears access on sign-out', async ({ 
   await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
 })
 
+test('renders Workforce for the ADTL December 2025 reporting period', async ({ page }) => {
+  await enterWorkspace(page)
+  await page.getByLabel('Month', { exact: true }).selectOption('2025-12')
+  await page.getByLabel('Company', { exact: true }).selectOption(company.company_name)
+  await page.getByRole('button', { name: 'Workforce', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Workforce directory' })).toBeVisible()
+  for (const title of ['Department distribution', 'Workforce by location', 'Employee type', 'Exit profile', 'Headcount and attrition trend', 'Monthly workforce comparison']) {
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
+  }
+  await expect(page.getByText('Attrition (%)', { exact: true })).toBeVisible()
+  await expect(page.getByText('Joiners', { exact: true })).toBeVisible()
+  await expect(page.getByText('Exits', { exact: true })).toBeVisible()
+  await expect(page.locator('.filter-result')).toHaveText('114 employees')
+  await page.getByLabel('Department', { exact: true }).selectOption('Engineering')
+  await expect(page.locator('.filter-result')).toHaveText(/^[1-9]\d? employees$/)
+  await expect(page.getByRole('heading', { name: 'Exit profile' })).toBeVisible()
+  await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
+})
+
 test('loads labelled ADTL data for employee, payroll and attendance views and filters', async ({ page }) => {
   await enterWorkspace(page)
   await expect(page.locator('.workspace-copy strong')).toHaveText(company.company_name)

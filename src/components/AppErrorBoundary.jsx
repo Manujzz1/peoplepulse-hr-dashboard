@@ -10,6 +10,12 @@ export default class AppErrorBoundary extends Component {
   render() {
     if (!this.state.failed) return this.props.children
 
+    if (this.props.moduleTitle) return <section className="source-mode-empty" role="alert">
+      <h2>Unable to load {this.props.moduleTitle}</h2>
+      <p>Try this page again or choose another page from the sidebar.</p>
+      <button className="stage-button" type="button" onClick={() => this.setState({ failed: false })}>Try again</button>
+    </section>
+
     return <main className="login-page">
       <section className="login-card" aria-labelledby="workspace-error">
         <div className="login-intro" role="alert">

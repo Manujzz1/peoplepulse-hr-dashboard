@@ -235,11 +235,13 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
   )
 }
 
-function WorkforceView({ employees, trends, departments, sourceLabel, isImported = false, selectedMonth, selectedDate, filters, getPeriodMetrics = getMonthMetrics }) {
+function WorkforceView({ employees, trends, departments, sourceLabel, isImported = false, workforceHeadcount, canReadEmployees = true }) {
   const locations = getGroupData(employees, 'location', 'location')
   const employment = getGroupData(employees, 'employmentType', 'employmentType')
   const gender = getGroupData(employees, 'gender', 'gender')
-  const exitAnalytics = isImported ? getPeriodMetrics(selectedMonth, filters, selectedDate).headcount : null
+  const { exitTypeDistribution = [], averageTenureAtExitYears } = workforceHeadcount ?? {}
+  const hasWorkforceTrend = trends.some(({ headcount, attrition }) => Number.isFinite(headcount) || Number.isFinite(attrition))
+  const hasMovementTrend = trends.some(({ joiners, exits }) => Number.isFinite(joiners) || Number.isFinite(exits))
   const tenureGroups = [
     { tenure: '< 1 year', headcount: employees.filter((employee) => employee.tenureYears < 1).length },
     { tenure: '1â€“3 years', headcount: employees.filter((employee) => employee.tenureYears >= 1 && employee.tenureYears < 3).length },
@@ -271,8 +273,17 @@ function WorkforceView({ employees, trends, departments, sourceLabel, isImported
             </BarChart>
           </ResponsiveContainer> : <EmptyChart />}
         </ChartPanel>
+        <ChartPanel title="Headcount and attrition trend" subtitle={trendPeriodLabel(trends)}>
+          {hasWorkforceTrend ? <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={trends} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
+              <CartesianGrid stroke="#eef0f5" vertical={false} /><XAxis dataKey="month" /><YAxis yAxisId="count" allowDecimals={false} /><YAxis yAxisId="rate" orientation="right" tickFormatter={(value) => `${value}%`} />
+              <Tooltip content={<ChartTooltip />} /><Legend />
+              <Line yAxisId="count" dataKey="headcount" name="Headcount" stroke="#627cf5" /><Line yAxisId="rate" dataKey="attrition" name="Attrition (%)" stroke="#e5798c" />
+            </LineChart>
+          </ResponsiveContainer> : <EmptyChart message="No verified headcount or attrition history for these filters." />}
+        </ChartPanel>
         <ChartPanel title="Monthly workforce comparison" subtitle={`Joiners and exits Â· ${trendPeriodLabel(trends)}`} className="wide-panel">
-          {employees.length ? <ResponsiveContainer width="100%" height="100%">
+          {hasMovementTrend ? <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={trends} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
               <CartesianGrid stroke="#eef0f5" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9299a8', fontSize: 11 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#9299a8', fontSize: 10 }} />
               <Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
@@ -280,13 +291,13 @@ function WorkforceView({ employees, trends, departments, sourceLabel, isImported
             </ComposedChart>
           </ResponsiveContainer> : <EmptyChart />}
         </ChartPanel>
-        {isImported && <ChartPanel title="Exit profile" subtitle={exitAnalytics.averageTenureAtExitYears == null ? 'Average tenure at exit unavailable' : `Average tenure at exit Â· ${exitAnalytics.averageTenureAtExitYears.toFixed(1)} years`}>
-          {exitAnalytics.exitTypeDistribution.length
-            ? <WorkforceTable data={exitAnalytics.exitTypeDistribution.map(({ exitType, count }) => ({ department: exitType, headcount: count }))} />
+        {isImported && <ChartPanel title="Exit profile" subtitle={!Number.isFinite(averageTenureAtExitYears) ? 'Average tenure at exit unavailable' : `Average tenure at exit Â· ${averageTenureAtExitYears.toFixed(1)} years`}>
+          {exitTypeDistribution?.length
+            ? <WorkforceTable data={exitTypeDistribution.map(({ exitType, count }) => ({ department: exitType, headcount: count }))} />
             : <EmptyChart message="No confirmed exits in this reporting period." />}
         </ChartPanel>}
       </div>
-      <EmployeeTable employees={employees} title="Workforce directory" sourceLabel={sourceLabel} />
+      {canReadEmployees && <EmployeeTable employees={employees} title="Workforce directory" description="Employees matching the current filters" sourceLabel={sourceLabel} />}
     </>
   )
 }

@@ -15,9 +15,8 @@ describe('Imported workforce exit analytics', () => {
   it('shows recorded exit types and average tenure at exit from filtered period metrics', () => {
     render(<DashboardModules
       page="workforce" isImported employees={[]} trends={[]} departments={[]}
-      selectedMonth="2025-12" selectedDate="2025-12-31"
-      filters={{ department: 'All departments', location: 'All locations', employmentType: 'All employment types' }}
-      getPeriodMetrics={() => ({ headcount: { exitTypeDistribution: [{ exitType: 'Voluntary', count: 2 }], averageTenureAtExitYears: 4.25 } })}
+      workforceHeadcount={{ exitTypeDistribution: [{ exitType: 'Voluntary', count: 2 }], averageTenureAtExitYears: 4.25 }}
+      getPeriodMetrics={() => ({ headcount: 120 })}
     />)
     const panel = screen.getByRole('heading', { name: 'Exit profile' }).closest('section')
     expect(within(panel).getByText('Voluntary')).toBeTruthy()
