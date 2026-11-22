@@ -4,6 +4,7 @@ import {
   FileText, Info, Trash2, UploadCloud,
 } from 'lucide-react'
 import { Panel } from './DashboardParts'
+import ImportBatchReview from './ImportBatchReview'
 import { autoMapColumns, findDuplicateMappings, validateMappedRows } from '../import/validateImport'
 import { IMPORT_CATEGORIES, IMPORT_SCHEMAS, MAX_IMPORT_BYTES, MONTHLY_IMPORT_CATEGORIES } from '../import/importSchemas'
 import { parseImportFile } from '../import/fileParsers'
@@ -25,7 +26,7 @@ function SummaryCard({ label, value, tone }) {
   return <div className={`import-summary-card ${tone || ''}`}><span>{label}</span><strong>{value}</strong></div>
 }
 
-export default function DataImportCenter({ dataSource, onDataSourceChange, stagedImports, setStagedImports, importHistory = [], importRollback, onImportStaged = () => {}, onRollback = () => {}, onStagedRemoved = () => {}, liveImportsEnabled = false, databaseReady = false, databaseCompanies = [], databaseWorkspace = null, databaseBatches = [], databasePermissions = {}, onSubmitDatabase = async () => {}, onTransitionBatch = async () => {} }) {
+export default function DataImportCenter({ dataSource, onDataSourceChange, stagedImports, setStagedImports, importHistory = [], importRollback, onImportStaged = () => {}, onRollback = () => {}, onStagedRemoved = () => {}, liveImportsEnabled = false, databaseReady = false, databaseCompanies = [], databaseWorkspace = null, databaseBatches = [], databasePermissions = {}, onSubmitDatabase = async () => {}, onTransitionBatch = async () => {}, onInspectBatch }) {
   const [category, setCategory] = useState('employeeMaster')
   const [fileName, setFileName] = useState('')
   const [sheets, setSheets] = useState([])
@@ -42,6 +43,7 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
   const [payrollControlTotals, setPayrollControlTotals] = useState({})
   const [databaseCompanyId, setDatabaseCompanyId] = useState('')
   const [databaseActionLoading, setDatabaseActionLoading] = useState(false)
+  const [inspectionId, setInspectionId] = useState(null)
   const requestId = useRef(0)
 
   const activeSheet = sheets.find((sheet) => sheet.name === sheetName)
@@ -293,6 +295,8 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
   const issueRows = validation?.issues.slice(0, 80) || []
   const completenessValid = !(markComplete && category === 'employeeMaster' && !masterAsOf)
   const canDatabasePermission = (permission) => liveImportsEnabled && (databasePermissions?.has?.('*') || databasePermissions?.has?.(permission))
+  const canInspect = (batch) => canDatabasePermission('imports.review') && batch.uploaded_by !== databaseWorkspace?.userId && ['Validated', 'Reviewed'].includes(batch.status)
+  const inspection = databaseBatches.find((batch) => batch.id === inspectionId && canInspect(batch))
   const stagedEmployeeIds = stagedImports.employeeMaster ? new Set(stagedImports.employeeMaster.rows.map((row) => String(row.employeeId).trim().toUpperCase())) : null
   const stagedProjectIds = stagedImports.projectMaster ? new Set(stagedImports.projectMaster.rows.map((row) => String(row.projectId).trim().toUpperCase())) : null
   const dependentStages = ['employeeHistory', 'payroll', 'attendance', 'leave', 'performance', 'increments', 'projectAllocation', 'exitRecords'].filter((id) => stagedImports[id])
@@ -314,7 +318,8 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
       {dataSource === 'live' && <Panel title="Organization import scope" subtitle="The current authenticated session and RLS policies determine which companies and batches are visible.">
         <label className="filter-control"><span>Company</span><select value={databaseCompanyId} onChange={(event) => setDatabaseCompanyId(event.target.value)} aria-label="Import company"><option value="">Select a company</option>{databaseCompanies.map((item) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>
         {!databaseReady && <StatusBanner kind="warning" icon={Info}>{liveImportsEnabled ? 'Database import requires a verified live session with import permission.' : 'Live imports are disabled in this deployment.'}</StatusBanner>}
-        {databaseBatches.length > 0 && <div className="import-table-scroll"><table><thead><tr><th>Dataset</th><th>Reporting month</th><th>Status</th><th>Rows</th><th>Workflow</th></tr></thead><tbody>{databaseBatches.map((batch) => <tr key={batch.id}><td>{batch.dataset_type}</td><td>{batch.reporting_month || '—'}</td><td>{batch.status}</td><td>{batch.total_rows}</td><td>{batch.status === 'Validated' && canDatabasePermission('imports.review') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Reviewed')}>Review</button>}{batch.status === 'Reviewed' && canDatabasePermission('imports.approve') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Approved')}>Approve</button>}{batch.status === 'Approved' && canDatabasePermission('imports.publish') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Published')}>Publish</button>}{['Validated', 'Reviewed', 'Uploaded'].includes(batch.status) && canDatabasePermission('imports.review') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Rejected')}>Reject</button>}</td></tr>)}</tbody></table></div>}
+        {databaseBatches.length > 0 && <div className="import-table-scroll"><table><thead><tr><th>Dataset</th><th>Reporting month</th><th>Status</th><th>Rows</th><th>Workflow</th></tr></thead><tbody>{databaseBatches.map((batch) => <tr key={batch.id}><td>{batch.dataset_type}</td><td>{batch.reporting_month || '—'}</td><td>{batch.status}</td><td>{batch.total_rows}</td><td>{canInspect(batch) && <button type="button" className="export-button" disabled={databaseActionLoading} onClick={() => setInspectionId(batch.id)}>Inspect</button>}{batch.status === 'Reviewed' && canDatabasePermission('imports.approve') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Approved')}>Approve</button>}{batch.status === 'Approved' && canDatabasePermission('imports.publish') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Published')}>Publish</button>}{['Validated', 'Reviewed', 'Uploaded'].includes(batch.status) && canDatabasePermission('imports.review') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Rejected')}>Reject</button>}</td></tr>)}</tbody></table></div>}
+        {inspection && <ImportBatchReview key={JSON.stringify([databaseWorkspace?.userId, databaseWorkspace?.scopeKey, inspection.id])} batch={inspection} inspect={onInspectBatch} close={() => setInspectionId(null)} review={() => moveBatch(inspection, 'Reviewed')} busy={databaseActionLoading} />}
       </Panel>}
 
       <StatusBanner kind="info" icon={Info}>Imported rows remain separate from Demo Data. They can power the analytics modules only after source completeness and employee/project reference checks pass for the selected reporting period.</StatusBanner>

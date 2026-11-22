@@ -258,3 +258,15 @@ export async function transitionImportBatch(client, batchId, status) {
   if (error) throw new Error(error.message || `Import batch could not transition to ${status}.`)
   return data
 }
+
+export async function inspectImportBatch(client, batchId, pageOffset) {
+  await assertCurrentUser(client)
+  const { data, error } = await client.rpc('inspect_peoplepulse_import_batch', {
+    target_batch_id: batchId,
+    page_offset: pageOffset,
+  })
+  if (error || !Array.isArray(data?.rows) || !Array.isArray(data?.issues)) {
+    throw new Error('Unable to inspect this batch. Check your review access and try again.')
+  }
+  return data
+}

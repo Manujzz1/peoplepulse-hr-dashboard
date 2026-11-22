@@ -1,11 +1,12 @@
 -- Run only on a disposable local database with the project migrations applied.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(35);
 
 insert into auth.users (id, email) values
   ('91000000-0000-4000-8000-000000000001', 'rpc-uploader@example.test'),
-  ('91000000-0000-4000-8000-000000000002', 'rpc-unassigned@example.test');
+  ('91000000-0000-4000-8000-000000000002', 'rpc-unassigned@example.test'),
+  ('91000000-0000-4000-8000-000000000003', 'rpc-reviewer@example.test');
 insert into public.organizations (id, organization_key, organization_name) values
   ('92000000-0000-4000-8000-000000000001', 'rpc-org-a', 'Synthetic RPC Org A'),
   ('92000000-0000-4000-8000-000000000002', 'rpc-org-b', 'Synthetic RPC Org B');
@@ -14,7 +15,8 @@ insert into public.companies (id, organization_id, company_key, company_name) va
   ('93000000-0000-4000-8000-000000000002', '92000000-0000-4000-8000-000000000001', 'rpc-b', 'Synthetic Company B'),
   ('93000000-0000-4000-8000-000000000003', '92000000-0000-4000-8000-000000000002', 'rpc-c', 'Synthetic Company C');
 insert into public.user_roles (user_id, organization_id, company_id, role_key) values
-  ('91000000-0000-4000-8000-000000000001', '92000000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', 'hr_admin');
+  ('91000000-0000-4000-8000-000000000001', '92000000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', 'hr_admin'),
+  ('91000000-0000-4000-8000-000000000003', '92000000-0000-4000-8000-000000000001', '93000000-0000-4000-8000-000000000001', 'hr_admin');
 
 create function pg_temp.submit(
   batch_number integer,
@@ -116,6 +118,31 @@ set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000001","e
 select is(pg_temp.submit(1, '[{"department_key":"RPC-OK","department_name":"Synthetic Department"}]') ->> 'reused', 'true', 'Same key and payload reuse the batch');
 select throws_ok($$select pg_temp.submit(1, '[{"department_key":"RPC-OK","department_name":"Changed"}]')$$, '23505', null, 'Reused client hash cannot disguise changed mapped rows');
 select is((select count(*) from public.departments where department_key = 'RPC-OK'), 0::bigint, 'Validated import is hidden from dashboard reads');
+select throws_ok(
+  $$select public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000001')$$,
+  '42501', null, 'Uploader cannot independently inspect own batch'
+);
+select ok(not pg_has_role('authenticated', 'peoplepulse_import_reviewer', 'MEMBER'), 'Browser role cannot assume the private reviewer role');
+set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000003","exp":1}';
+select throws_ok(
+  $$select public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000001')$$,
+  '42501', null, 'Expired reviewer token cannot read staged rows'
+);
+set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000003","exp":4102444800}';
+select is(
+  public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000001') #>> '{rows,0,department_key}',
+  'RPC-OK', 'Independent scoped reviewer can read the submitted row'
+);
+select is(
+  public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000001', 50) -> 'rows',
+  '[]'::jsonb, 'Inspection respects page offset'
+);
+select throws_ok(
+  $$select public.inspect_peoplepulse_import_batch('94000000-0000-4000-8000-000000000009')$$,
+  '42501', null, 'Pre-cutover batches are unavailable through inspection'
+);
+select is((select count(*) from public.departments where department_key = 'RPC-OK'), 0::bigint, 'Reviewer dashboard still cannot see staged rows');
+set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000001","exp":4102444800}';
 select throws_ok(
   $$select pg_temp.submit(2, '[{"department_key":"RPC-ROLLBACK","department_name":"Synthetic"},{"department_key":"RPC-OK","department_name":"Duplicate"}]')$$,
   '23505', null, 'Duplicate in a later row fails the entire submission'

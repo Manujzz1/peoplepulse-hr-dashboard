@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, Check, ChevronDown, Database, LogOut, MapPin, Menu, Search,
 } from 'lucide-react'
@@ -11,7 +11,7 @@ import { supabase, supabaseConfigured } from './auth/supabaseClient'
 import { authStatusForEvent, authStatusForInitialSession, shouldClearPrivateStateOnAuthChange } from './auth/sessionStatus'
 import { canAccessPage, getAllowedReportKeys, getDepartmentScope, hasPermission, loadAccessProfile, PAGE_PERMISSIONS, REPORT_PERMISSIONS } from './auth/accessControl'
 import { loadLiveWorkspace, scopedLiveStages } from './data/liveWorkspace'
-import { submitImportBatch, transitionImportBatch } from './import/remoteImport'
+import { inspectImportBatch, submitImportBatch, transitionImportBatch } from './import/remoteImport'
 const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
 const ReportsCenter = lazy(() => import('./components/ReportsCenter'))
@@ -400,6 +400,12 @@ function App() {
     setLiveRetry((count) => count + 1)
     return result
   }
+  const inspectDatabaseBatch = useCallback(async (id, offset) => {
+    if (!liveImportsEnabled || !authenticatedAccessReady || !supabase) {
+      throw new Error('Import review is unavailable in this session.')
+    }
+    return inspectImportBatch(supabase, id, offset)
+  }, [authenticatedAccessReady])
   const refreshLiveWorkspaceForExport = async () => {
     if (!supabase || !authenticatedAccessReady || dataSource !== 'live') throw new Error('A verified live session is required.')
     const workspace = await loadLiveWorkspace(supabase, accessProfile)
@@ -530,7 +536,7 @@ function App() {
             <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
             <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>
           </div>
-          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} /></Suspense> : isModelSource && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
+          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : isModelSource && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
             <section className="source-mode-empty">
               <div className="source-mode-icon"><Database size={22} /></div>
               <p className="eyebrow">IMPORTED DATA Â· {reportingMonth}</p>
