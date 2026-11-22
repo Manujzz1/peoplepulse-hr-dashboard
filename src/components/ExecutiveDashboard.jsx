@@ -20,8 +20,8 @@ function group(rows, label) {
   return [...counts].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
 }
 
-function Panel({ title, children, className = '' }) {
-  return <section className={'exec-panel ' + className}>
+function Panel({ title, children, className = '', id }) {
+  return <section id={id} className={'exec-panel ' + className}>
     <h2>{title}</h2>
     <AppErrorBoundary moduleTitle={title}>{children}</AppErrorBoundary>
   </section>
@@ -103,7 +103,7 @@ export default function ExecutiveDashboard({ metrics, trends, month, monthEnd, f
       <Icon size={18} aria-hidden="true" /><div><h2>{label}</h2><strong>{value}</strong><p>{detail}</p></div>
     </section>)}</div>
     <div className="exec-grid exec-grid-four">
-      <Panel title="Headcount by department"><Breakdown category="Department headcount" rows={departments} /></Panel>
+      <Panel id={sample ? 'sample-workforce' : undefined} title="Headcount by department"><Breakdown category="Department headcount" rows={departments} /></Panel>
       <Panel title="Employment status"><Breakdown category="Employment status" donut rows={complete ? [{ name: 'Active at close', value: headcount.closing }, { name: 'Exited this period', value: headcount.exits }] : []} />{!complete && <p className="exec-note">{rosterReason}</p>}</Panel>
       <Panel title="Gender distribution"><Breakdown category="Gender distribution" donut rows={genders} /></Panel>
       <Panel title="Age profile">{current ? <Breakdown category="Age profile" rows={group(employees, ({ age }) => age < 25 ? 'Under 25' : age < 35 ? '25-34' : age < 45 ? '35-44' : age < 55 ? '45-54' : '55+').sort((a, b) => (Number.parseInt(a.name) || 0) - (Number.parseInt(b.name) || 0))} /> : unavailable('Date of birth is outside the scoped employee dataset.')}</Panel>
@@ -142,12 +142,12 @@ export default function ExecutiveDashboard({ metrics, trends, month, monthEnd, f
       <Panel title="Employee engagement">{current ? <Facts category="Employee engagement" rows={[['eNPS', display(current.engagement.enps)], ['Responses', display(current.engagement.responses)], ['Promoters', display(current.engagement.promoters)], ['Passives', display(current.engagement.passives)], ['Detractors', display(current.engagement.detractors)]]} /> : unavailable('No engagement survey or eNPS source is connected.')}</Panel>
     </div>
     <div className="exec-grid exec-management">
-      <Panel title="HR Checklist">
+      <Panel id={sample ? 'sample-checklist' : undefined} title="HR Checklist">
         <div className="exec-table" tabIndex={0} role="region" aria-label="HR Checklist table"><table><thead><tr>
           <th>Status</th><th>Responsible owner</th><th>Due date</th><th>Priority</th><th>Action required</th>
         </tr></thead><tbody>{current?.actionRows.length ? current.actionRows.map((row) => <tr key={row.id} data-sample-export data-sample-category="HR Checklist" data-sample-metric={row.action} data-sample-value={[row.status, row.owner, row.due, row.priority].join(' | ')}><td>{row.status}</td><td>{row.owner}</td><td>{row.due}</td><td>{row.priority}</td><td>{row.action}</td></tr>) : <tr><td colSpan={5}>{current ? 'No actions in this selection.' : 'Unavailable. ' + actionsReason}</td></tr>}</tbody></table></div>
       </Panel>
-      <Panel title="Management Insights"><ul className="exec-insights">
+      <Panel id={sample ? 'sample-insights' : undefined} title="Management Insights"><ul className="exec-insights">
         {departments.length > 0 && <li><BriefcaseBusiness size={16} /><span><strong>{departments[0].name}</strong> is the largest department in the visible active roster with {display(departments[0].value)} employees.</span></li>}
         {complete && <li><Activity size={16} /><span>The selected period recorded <strong>{display(headcount.joiners)} hires</strong> and <strong>{display(headcount.exits)} confirmed exits</strong>.</span></li>}
         {current && <li data-sample-export data-sample-category="Management Insights" data-sample-metric="Absence and training" data-sample-value={current.absent + ' absent days / ' + current.scheduled + ' scheduled days; ' + current.training + ' training hours'}><CalendarDays size={16} /><span><strong>{display(current.absent)}</strong> of {display(current.scheduled)} scheduled days were unplanned absences. Employees logged {display(current.training)} training hours.</span></li>}
