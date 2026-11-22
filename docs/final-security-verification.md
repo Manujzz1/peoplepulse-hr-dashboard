@@ -48,7 +48,7 @@ Draft PR #1 remains open and unmerged. At the reviewed code commit `c0d9f0e`, CI
 | Hosted Preview authentication | NOT VERIFIED | Preview stays disconnected from production. Hosted browser integration remains a documented release risk. |
 | Independent reviewer inspection | PASSED in isolation | CI verified the scoped inspection endpoint with synthetic authenticated users. Production import enablement requires separate approval. |
 | Production catalog and migration impact | PASSED | Six baseline versions are present. Zero unpublished batches and zero over-limit allocation groups at the time of the audit. The effective Data API schemas are `public` and `graphql_public`. |
-| SQL recovery point | BLOCKED | Backup inventory contains zero backups and PITR is disabled. Establish and confirm a usable recovery point, restore procedure and protected destination before requesting SQL execution approval. |
+| SQL recovery point | DEFERRED — NOT VERIFIED | The owner deferred backup and restore work during development. A usable checkpoint and independently witnessed restore remain mandatory before production SQL or full release approval. |
 | Production permissions | FAILED | Excess authenticated grants remain until approved migration execution. The reviewed local change removes direct staging and excess privileges. |
 | Production SQL execution | REQUIRES APPROVAL | Request approval for the exact four versions below after recovery readiness. No production SQL was written. |
 | Release and real Super Admin smoke test | BLOCKED | Deployment approval follows completion of the mandatory gates. Login validation requires the account holder in an authorized browser session. |
@@ -70,4 +70,4 @@ The package does not delete employee or payroll rows. The allocation migration r
 
 Independent review needs access to the submitted content. The separate candidate `20261122015125_add_scoped_import_review.sql` adds bounded, read-only pages for unpublished atomic batches. It excludes the uploader and requires the applicable import and dataset permissions. Its dedicated role has no login, write grants, or RLS bypass. Normal dashboard and export queries retain their published-row visibility. The original three migration blobs are unchanged. The new migration must be reviewed and approved separately before production application.
 
-[Database recovery plan](database-recovery-plan.md) specifies protected capture, restore and independent verification of Auth, application data, roles, grants, policies and migration history. A source checkpoint and witnessed restore are still blocked.
+[Database recovery plan](database-recovery-plan.md) specifies protected capture, restore and independent verification of Auth, application data, roles, grants, policies and migration history. Recovery is **DEFERRED — NOT VERIFIED** and remains a mandatory production release requirement.

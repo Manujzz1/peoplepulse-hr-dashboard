@@ -24,7 +24,7 @@ The local build rejects partial or invalid Supabase configuration and refuses co
 - [x] Verify the production Site URL and sole additional redirect are both `https://peoplepulse-hr-dashboard.vercel.app`.
 - [ ] Have the owner record whether **Prevent use of leaked passwords** is enabled or unavailable on the current plan. Record the security decision if the control is unavailable.
 - [x] Retain the isolated PostgreSQL, synthetic Auth/Data API, unit and browser verification. Hosted Preview authentication is **NOT VERIFIED**. Keep Preview protected and disconnected from production.
-- [ ] Obtain independent sign-off on a usable, verified recovery point using the [database recovery procedure](database-recovery-plan.md).
+- [ ] **DEFERRED — NOT VERIFIED.** Obtain independent sign-off on a usable recovery point before production SQL, merge, or full deployment. [Database recovery procedure](database-recovery-plan.md)
 - [ ] Recheck the [four migration checksums and preflight](final-security-verification.md) before requesting authorization for the exact files in dependency order. Check installed versions, grants and both RPCs after any separately approved application.
 - [ ] Record the exact reviewed PR head and green checks, branch protection and review status, and acceptance of the hosted Preview residual risk. Obtain explicit approval to merge and deploy that revision.
 - [ ] Verify the deployed commit and Production Supabase configuration. Have the existing Super Admin verify login, refresh, organization scope and logout. If Auth or access checks fail, withhold confidential use and follow rollback.
@@ -38,21 +38,21 @@ If a database migration fails, keep imports disabled, record the versions that a
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| Unit tests | PASS | 157 tests passed across 25 Vitest files. |
+| Unit tests | PASS | See the latest passing CI run on draft PR #1 for the current count. |
 | Browser tests | PASS | Four tests passed. Synthetic Chromium coverage for the sign-in gate, navigation, filtering, search, CSV and XLSX import preview, report downloads, mobile layout and browser errors. |
 | Lint | PASS | Local Oxlint exited successfully. Git diff whitespace checks also passed. |
 | Production build | PASS | Vite generated `dist` with the expected project URL and publishable key. Chrome rendered the email and password form from the compiled build. A production-mode build with both variables missing failed as intended. Vite reported the two lazy ExcelJS chunks of about 929 kB and 932 kB. |
 | Runtime RLS | PASS | 73 of 73 assertions passed in disposable embedded PostgreSQL 18.7. Full isolated Supabase verification passed in GitHub CI. |
-| SQL RPC runtime | PASS | 19 of 19 assertions passed in the embedded run. Full isolated Supabase verification remains open. |
-| Hosted Auth configuration | NOT VERIFIED | The follow-up public Auth request confirmed public sign-up and anonymous sign-in are now disabled. Password policy, leaked-password protection, Site URL and redirect allowlist require Dashboard verification. |
+| SQL RPC runtime | PASS | 36 of 36 RPC assertions passed in isolated Supabase CI, including scoped reviewer access. |
+| Hosted Auth configuration | NOT VERIFIED | Site URL and sole redirect match production. Public sign-up and anonymous sign-in are disabled. Leaked-password protection requires manual verification. |
 | Existing Super Admin login | NOT VERIFIED | Requires the account holder to authenticate in the browser. |
 | Live dashboard queries | NOT VERIFIED | Unit tests use mocked clients. Authenticated reads, KPI reconciliation and the full filter matrix still need isolated data. |
-| Import security | BLOCKED | SQL runtime, authenticated workflow, and independent inspection of staged contents remain open. |
+| Import security | PASSED in isolation | PostgreSQL and the synthetic Auth/Data API workflow verify atomic staging and scoped independent inspection. Live import actions remain disabled. |
 | Export security | NOT VERIFIED | Client and demo checks passed. Authenticated role, payroll and tenant checks remain open. |
 | Secrets review | PASS | 149 local source/build files scanned for privileged Supabase credentials with zero findings. Local configuration points to the expected project and uses a publishable key. Hosted values and hosted build assets were outside that scan. |
-| GitHub readiness | PASS | GitHub `main` and local HEAD both resolve to `1a0c690d65fc18aeb6edee1fed4b4e16d246a4e4`. The candidate is local and unstaged. |
+| GitHub readiness | PASS | Draft PR #1 targets `main`. Use its exact head SHA and passing CI when preparing an approval request. |
 | Vercel readiness | FAIL | Production still serves the old build without working Auth configuration. The current Production URL and publishable key were validated. A new approved deployment is required. |
-| Production RPC approval | BLOCKED | Isolated database results and an explicit production approval are required. |
+| Production RPC approval | BLOCKED | The four candidates passed isolated SQL tests. Recovery is deferred and production execution requires separate explicit approval. |
 
 The candidate is withheld from production deployment and confidential HR or payroll use pending these gates.
 
@@ -71,15 +71,15 @@ supabase.exe test db supabase/tests/peoplepulse_import_rpc_test.sql
 supabase.exe stop
 ```
 
-The six baseline migrations, both local migration candidates, and the synthetic seed load into the local stack. Each pgTAP suite creates its own synthetic Auth fixtures in a transaction and rolls back. Use the local target throughout. The CI job applies both candidates when creating the disposable stack. See [final security verification](final-security-verification.md) for the embedded test results and reproduction steps. See [Supabase local database testing](https://supabase.com/docs/guides/local-development/cli/testing-and-linting).
+The six baseline migrations, the four migration candidates, and the synthetic seed load into the local stack. Each pgTAP suite creates its own synthetic Auth fixtures in a transaction and rolls back. Use the local target throughout. The CI job applies all four candidates when creating the disposable stack. See [final security verification](final-security-verification.md) for the embedded test results and reproduction steps. See [Supabase local database testing](https://supabase.com/docs/guides/local-development/cli/testing-and-linting).
 
 ## 2. Verify hosted Auth and the existing account
 
 1. In Supabase Dashboard, select project `moxnyczdleagujjxwncw`. In **Authentication → Providers / Sign In**, keep public sign-up and anonymous sign-in disabled. Open the Email provider and confirm email confirmation is enabled.
-2. In **Authentication → Password Security**, confirm leaked-password protection, minimum length and character policy against the organization’s approved password rules. If a setting is unavailable on the current plan, record the gap and obtain approval before changing plans or settings.
+2. In **Authentication → Password Security**, confirm leaked-password protection, minimum length and character policy against the organization’s approved password rules. If a setting is unavailable on the current plan, record it for the security decision.
 3. In **Authentication → URL Configuration**, check Site URL `https://peoplepulse-hr-dashboard.vercel.app` and the exact production root entry for password reset. The app requests a redirect to the current origin. Use only the exact `http://localhost:5173` origin if that development callback is approved. Review the full redirect list and email recovery template for broad patterns or hardcoded destinations. See [Supabase redirect URL rules](https://supabase.com/docs/guides/auth/redirect-urls).
 4. In a private browser window, sign in directly to the existing site using the existing Super Admin account. Confirm the expected production organization, the expected `super_admin` assignment, authorized navigation and the live empty state where applicable. Reload the same tab, confirm persistence, sign out and reload a deep link to check the sign-in gate. Record the result without copying credentials, tokens, or HR records.
-5. In the isolated project use synthetic identities to verify the complete reset flow, expired/revoked sessions, cross-role and cross-tenant behavior, and direct navigation. Use the same browser tab for PKCE recovery. Repeat the production account smoke check on the approved release.
+5. In the existing disposable local or CI stack use synthetic identities to verify the complete reset flow, expired/revoked sessions, cross-role and cross-tenant behavior, and direct navigation. Use the same browser tab for PKCE recovery. Repeat the production account smoke check on the approved release.
 
 ## 3. Review and release
 
@@ -87,8 +87,8 @@ The six baseline migrations, both local migration candidates, and the synthetic 
 2. Review `git status --short`, `git diff`, `git diff --cached` and `git diff --check`. Explicitly stage intended source, tests, SQL, CI and documentation only. Review `git diff --cached` again. Exclude `.agents/`, `skills-lock.json`, environment files, `supabase/.temp/`, `dist/`, `test-results/` and confidential data. With explicit approval, commit the reviewed files and push a review branch. Verify the GitHub commit and CI result.
 3. In Vercel project **Settings → Git**, confirm the linked repository is `Manujzz1/peoplepulse-hr-dashboard` and production branch is `main`. Under **Build and Deployment**, check the repository root, build command `npm run build` and output `dist`. The hosted deployment metadata reports an unset framework preset. The checked-in `vercel.json` provides SPA rewrites.
 4. Under **Settings → Environment Variables**, confirm `VITE_SUPABASE_URL` points to `https://moxnyczdleagujjxwncw.supabase.co` and `VITE_SUPABASE_PUBLISHABLE_KEY` is the corresponding public client key. Verify the settings privately. Keep those variables scoped to Production. A push or merge to the connected production branch can initiate a deployment, so obtain deployment approval before that step.
-5. After isolated success, review the two versioned candidates and obtain separate approval for applying them to the specific production project. Verify the function signature, invoker security, grants, underlying policies and deployed migration record. Obtain separate approval for production frontend promotion. Existing production Auth users and data are outside the migration.
-6. After release, check the production URL, SPA deep links, sign-in, session restoration, role-visible dashboards, sign-out and filtered exports. Perform an authorized import smoke test with synthetic records only in an isolated environment. Verify production import availability without uploading real or synthetic HR rows to production.
+5. After independent recovery sign-off and completion of the security gates, obtain separate approval for applying the four reviewed migrations to the specific production project. Verify function signatures, invoker security, grants, underlying policies and migration records. Obtain separate approval for merging PR #1 and promoting the production frontend. Keep live import actions disabled.
+6. After release, check the production URL, SPA deep links, sign-in, session restoration, role-visible dashboards, sign-out and filtered exports. Perform an authorized import smoke test with synthetic records only in an isolated environment. Verify production import actions remain disabled.
 
 ## Rollback
 

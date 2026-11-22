@@ -1,6 +1,6 @@
 # PeoplePulse database recovery plan
 
-**Status: BLOCKED.** A fresh read-only inventory for `moxnyczdleagujjxwncw` returned zero physical backups, no earliest backup timestamp, and PITR disabled. No recoverable production checkpoint or independently witnessed restore has been verified.
+**Status: DEFERRED — NOT VERIFIED.** The owner deferred backup and restore work during development. The last read-only inventory for `moxnyczdleagujjxwncw` returned zero physical backups, no earliest backup timestamp, and PITR disabled. A verified production checkpoint and independently witnessed restore remain mandatory before production SQL or full release approval.
 
 ## Recovery procedure on existing infrastructure
 
