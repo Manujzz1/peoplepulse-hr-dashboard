@@ -160,8 +160,8 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   payroll.push({ department: 'Filtered total', employeeCount: employees.length, monthlyGrossPayrollINR: money(current.payroll), annualisedGrossPayrollINR: money(current.payroll * 12), annualCtcINR: annualCtc })
   const employeeCost = workforce.map(({ employeeId, employeeName, company, department, location, employmentType, monthlyGrossSalaryINR, annualCtcINR, ...components }) => ({ employeeId, employeeName, company, department, location, employmentType, monthlyGrossSalaryINR, annualCtcINR, ...components }))
   const attendanceRows = workforce.map(({ employeeId, employeeName, company, department, location, attendancePercentage }) => ({ employeeId, employeeName, company, department, location, attendancePercentage }))
-  const leaveLop = workforce.map(({ employeeId, employeeName, company, department, location, lopDays, leaveTaken }) => ({ employeeId, employeeName, company, department, location, lopDays, leaveTaken, leaveTakenYtd: employees.find((employee) => employee.id === employeeId)?.leaveTakenYtd ?? null }))
-  const performance = workforce.map(({ employeeId, employeeName, company, department, performanceScore }) => ({ employeeId, employeeName, company, department, performanceScore, performanceCategory: employees.find((employee) => employee.id === employeeId)?.performanceCategory ?? null }))
+  const leaveLop = workforce.map(({ employeeId, employeeName, company, department, location, lopDays, leaveTaken }, index) => ({ employeeId, employeeName, company, department, location, lopDays, leaveTaken, leaveTakenYtd: employees[index].leaveTakenYtd ?? null }))
+  const performance = workforce.map(({ employeeId, employeeName, company, department, performanceScore }, index) => ({ employeeId, employeeName, company, department, performanceScore, performanceCategory: employees[index].performanceCategory ?? null }))
   const increments = current.incrementAnalytics
     ? current.incrementAnalytics.rows.map((row) => ({
       employeeId: row.employeeId,
@@ -198,7 +198,7 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   projectAssignments.forEach((employee) => {
     const project = employee.project || 'Unallocated'
     const value = projectGroups.get(project) || { project, employeeIds: new Set(), allocationWeightedFTE: 0, allocationWeightedCostINR: 0 }
-    value.employeeIds.add(employee.id)
+    value.employeeIds.add(employee.employeeRecordId || employee.id)
     const allocation = Number(employee.allocation || 0)
     value.allocationWeightedFTE += allocation / 100
     value.allocationWeightedCostINR += Number(employee.monthlySalary || 0) * allocation / 100

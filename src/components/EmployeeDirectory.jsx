@@ -57,7 +57,7 @@ export default function EmployeeDirectory({ employees, asOfDate, sourceLabel, ro
         </div>
         <div className="table-scroll"><table>
           <thead><tr><th>Employee ID</th><th>Employee</th><th>Company</th><th>Department</th><th>Designation</th><th>Grade</th><th>Location</th><th>Employment type</th><th>Hire date</th><th>Exit date</th><th>Status</th></tr></thead>
-          <tbody>{filtered.map((employee) => <tr key={employee.id}>
+          <tbody>{filtered.map((employee) => <tr key={employee.employeeRecordId || employee.id}>
             <td>{employee.id}</td>
             <td><button type="button" className="employee-profile-link" onClick={() => setSelected(employee)}>{employee.name}</button></td>
             <td>{display(employee.company)}</td><td>{display(employee.department)}</td><td>{display(employee.designation)}</td><td>{display(employee.grade)}</td><td>{display(employee.location)}</td>

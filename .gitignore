@@ -11,9 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env.local
 .env*
 !.env.example
 .supabase
+supabase/.temp/
 playwright-report
 test-results
 

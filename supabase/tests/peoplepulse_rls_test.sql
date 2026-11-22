@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(59);
+select plan(73);
 
 insert into auth.users (id, email) values
   ('81000000-0000-4000-8000-000000000001', 'hr-admin-a@example.test'),
@@ -9,21 +9,27 @@ insert into auth.users (id, email) values
   ('81000000-0000-4000-8000-000000000004', 'department-head-a@example.test'),
   ('81000000-0000-4000-8000-000000000005', 'import-reviewer-a@example.test'),
   ('81000000-0000-4000-8000-000000000006', 'import-approver-a@example.test'),
-  ('81000000-0000-4000-8000-000000000007', 'super-admin-a@example.test');
+  ('81000000-0000-4000-8000-000000000007', 'super-admin-a@example.test'),
+  ('81000000-0000-4000-8000-000000000008', 'super-admin-b@example.test'),
+  ('81000000-0000-4000-8000-000000000009', 'unassigned@example.test');
 
 insert into public.organizations (id, organization_key, organization_name) values
-  ('82000000-0000-4000-8000-000000000001', 'rls-test-org', 'RLS Test Synthetic Org');
+  ('82000000-0000-4000-8000-000000000001', 'rls-test-org', 'RLS Test Synthetic Org'),
+  ('82000000-0000-4000-8000-000000000002', 'rls-test-org-b', 'RLS Test Synthetic Org B');
 insert into public.companies (id, organization_id, company_key, company_name) values
   ('83000000-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000001', 'rls-a', 'RLS Synthetic Company A'),
-  ('83000000-0000-4000-8000-000000000002', '82000000-0000-4000-8000-000000000001', 'rls-b', 'RLS Synthetic Company B');
+  ('83000000-0000-4000-8000-000000000002', '82000000-0000-4000-8000-000000000001', 'rls-b', 'RLS Synthetic Company B'),
+  ('83000000-0000-4000-8000-000000000003', '82000000-0000-4000-8000-000000000002', 'rls-org-b', 'RLS Synthetic Org B Company');
 insert into public.departments (id, company_id, department_key, department_name) values
   ('84000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'A-ENG', 'Sample Engineering A'),
   ('84000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000001', 'A-OPS', 'Sample Operations A'),
-  ('84000000-0000-4000-8000-000000000003', '83000000-0000-4000-8000-000000000002', 'B-ENG', 'Sample Engineering B');
+  ('84000000-0000-4000-8000-000000000003', '83000000-0000-4000-8000-000000000002', 'B-ENG', 'Sample Engineering B'),
+  ('84000000-0000-4000-8000-000000000004', '83000000-0000-4000-8000-000000000003', 'ORG-B-ENG', 'Sample Org B Engineering');
 insert into public.employees (id, company_id, employee_code, employee_name, department_id, hire_date) values
   ('85000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'SYN-A1', 'Synthetic A Employee 1', '84000000-0000-4000-8000-000000000001', '2024-01-01'),
   ('85000000-0000-4000-8000-000000000002', '83000000-0000-4000-8000-000000000001', 'SYN-A2', 'Synthetic A Employee 2', '84000000-0000-4000-8000-000000000002', '2024-01-01'),
-  ('85000000-0000-4000-8000-000000000003', '83000000-0000-4000-8000-000000000002', 'SYN-B1', 'Synthetic B Employee 1', '84000000-0000-4000-8000-000000000003', '2024-01-01');
+  ('85000000-0000-4000-8000-000000000003', '83000000-0000-4000-8000-000000000002', 'SYN-B1', 'Synthetic B Employee 1', '84000000-0000-4000-8000-000000000003', '2024-01-01'),
+  ('85000000-0000-4000-8000-000000000004', '83000000-0000-4000-8000-000000000003', 'SYN-ORG-B', 'Synthetic Org B Employee', '84000000-0000-4000-8000-000000000004', '2024-01-01');
 insert into public.payroll_records (company_id, employee_id, department_id, reporting_month, monthly_gross) values
   ('83000000-0000-4000-8000-000000000001', '85000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', '2025-04-01', 100000),
   ('83000000-0000-4000-8000-000000000001', '85000000-0000-4000-8000-000000000002', '84000000-0000-4000-8000-000000000002', '2025-04-01', 75000),
@@ -35,7 +41,8 @@ insert into public.user_roles (user_id, organization_id, company_id, role_key) v
   ('81000000-0000-4000-8000-000000000004', '82000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'department_head'),
   ('81000000-0000-4000-8000-000000000005', '82000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'hr_admin'),
   ('81000000-0000-4000-8000-000000000006', '82000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000001', 'hr_admin'),
-  ('81000000-0000-4000-8000-000000000007', '82000000-0000-4000-8000-000000000001', null, 'super_admin');
+  ('81000000-0000-4000-8000-000000000007', '82000000-0000-4000-8000-000000000001', null, 'super_admin'),
+  ('81000000-0000-4000-8000-000000000008', '82000000-0000-4000-8000-000000000002', null, 'super_admin');
 update public.user_roles set department_id = '84000000-0000-4000-8000-000000000001'
 where user_id = '81000000-0000-4000-8000-000000000004';
 
@@ -131,15 +138,21 @@ select results_eq(
   array[175000::numeric],
   'HR Admin can read payroll in their company'
 );
-select results_eq(
+select is_empty(
   $$update public.employees set employee_name = 'Synthetic A Employee 1 Updated' where employee_code = 'SYN-A1' returning employee_code$$,
-  array['SYN-A1']::text[],
-  'HR Admin can update an employee in their company'
+  'HR Admin cannot directly edit employee data outside an uploaded batch'
 );
 select is_empty(
   $$update public.employees set employee_name = 'Cross Company Change' where employee_code = 'SYN-B1' returning employee_code$$,
   'HR Admin cannot update another company employee'
 );
+select is_empty(
+  $$delete from public.employees where employee_code = 'SYN-B1' returning employee_code$$,
+  'HR Admin cannot delete another company employee'
+);
+
+set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000009';
+select is_empty('select employee_code from public.employees', 'Authenticated identity with no role sees no employees');
 
 set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000002';
 select results_eq(
@@ -163,10 +176,14 @@ select results_eq(
 );
 
 select ok(not has_table_privilege('anon', 'public.payroll_records', 'SELECT'), 'Anonymous role has no payroll table grant');
+select ok(not has_table_privilege('anon', 'public.employees', 'SELECT'), 'Anonymous role has no employee table grant');
+select ok(not has_table_privilege('anon', 'public.import_batches', 'SELECT'), 'Anonymous role has no import workflow table grant');
+select ok(not has_table_privilege('anon', 'public.organizations', 'SELECT'), 'Anonymous role has no organization table grant');
 select ok(not has_table_privilege('authenticated', 'public.audit_logs', 'UPDATE'), 'Authenticated role cannot update audit rows');
 select ok((select relrowsecurity from pg_class where oid = 'public.employees'::regclass), 'Employee master has row-level security enabled');
 select ok((select relrowsecurity from pg_class where oid = 'public.payroll_records'::regclass), 'Payroll records have row-level security enabled');
 
+set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000001';
 select throws_ok(
   $$insert into public.user_roles (user_id, organization_id, company_id, role_key)
     values ('81000000-0000-4000-8000-000000000003', '82000000-0000-4000-8000-000000000001', null, 'super_admin')$$,
@@ -331,13 +348,15 @@ select lives_ok(
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'project_allocation' and reporting_month = '2025-05-01'$$,
   'Uploader can open the project allocation batch for staging'
 );
-select results_eq(
+select lives_ok(
   $$insert into public.project_allocations (company_id, employee_id, department_id, project_id, reporting_month, allocation_percentage, source_batch_id)
     select '83000000-0000-4000-8000-000000000001', '85000000-0000-4000-8000-000000000001', '84000000-0000-4000-8000-000000000001', '86000000-0000-4000-8000-000000000001', '2025-05-01', 70, id
-      from public.import_batches where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'project_allocation' and reporting_month = '2025-05-01'
-    returning allocation_percentage$$,
-  array[70::numeric],
-  'A first monthly project allocation is accepted'
+      from public.import_batches where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'project_allocation' and reporting_month = '2025-05-01'$$,
+  'A first monthly project allocation can be staged without reading it back'
+);
+select is_empty(
+  $$select id from public.project_allocations where reporting_month = '2025-05-01'$$,
+  'Allocation enforcement keeps staged rows invisible to employee reporting'
 );
 select throws_ok(
   $$insert into public.project_allocations (company_id, employee_id, department_id, project_id, reporting_month, allocation_percentage, source_batch_id)
@@ -346,6 +365,52 @@ select throws_ok(
   '23514',
   'Combined project allocation for employee and month exceeds 100 percent.',
   'Database rejects allocations above 100 percent'
+);
+
+set local role authenticated;
+set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000007';
+select results_eq(
+  'select organization_key from public.organizations order by organization_key',
+  array['rls-test-org']::text[],
+  'Organization Super Admin can read only their own organization'
+);
+select results_eq(
+  'select company_key from public.companies order by company_key',
+  array['rls-a','rls-b']::text[],
+  'Organization Super Admin can read companies in their organization only'
+);
+select results_eq(
+  'select employee_code from public.employees order by employee_code',
+  array['SYN-A1','SYN-A2','SYN-B1']::text[],
+  'Organization Super Admin reads employees across own companies only'
+);
+select is_empty(
+  $$select employee_code from public.employees where employee_code = 'SYN-ORG-B'$$,
+  'Organization Super Admin cannot read another organization employee'
+);
+select is_empty(
+  $$select company_key from public.companies where company_key = 'rls-org-b'$$,
+  'Organization Super Admin cannot read another organization company'
+);
+
+set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000008';
+select results_eq(
+  'select organization_key from public.organizations order by organization_key',
+  array['rls-test-org-b']::text[],
+  'Second Organization Super Admin is limited to the second organization'
+);
+select results_eq(
+  'select employee_code from public.employees order by employee_code',
+  array['SYN-ORG-B']::text[],
+  'Second Organization Super Admin sees only its own employee data'
+);
+
+set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000007';
+select throws_ok(
+  $$insert into public.user_roles (user_id, organization_id, company_id, role_key)
+    values ('81000000-0000-4000-8000-000000000003', '82000000-0000-4000-8000-000000000002', null, 'hr_admin')$$,
+  '42501', null,
+  'Organization Super Admin cannot assign roles in another organization'
 );
 
 select * from finish();

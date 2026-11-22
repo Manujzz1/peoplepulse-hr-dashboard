@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canAccessPage, deriveAccessProfile, getAllowedReportKeys, getDepartmentScope, hasPermission, loadAccessProfile } from './accessControl'
+import { canAccessPage, deriveAccessProfile, getAllowedReportKeys, getDepartmentScope, hasPermission, loadAccessProfile, loadCurrentAccessProfile } from './accessControl'
 
 const queryFor = (response) => ({
   select() { return this },
@@ -137,5 +137,29 @@ describe('role-based application access', () => {
     const client = { from: () => queryFor({ data: null, error: new Error('permission denied') }) }
 
     await expect(loadAccessProfile(client, 'user-1')).rejects.toThrow('permission denied')
+  })
+
+  it('verifies the current Auth user before refreshing report permissions', async () => {
+    const rowsByTable = {
+      user_roles: { data: [{ role_key: 'management', department_id: null }], error: null },
+      role_permissions: { data: [{ role_key: 'management', permission_key: 'reports.aggregate' }], error: null },
+      departments: { data: [], error: null },
+    }
+    const client = {
+      auth: { getUser: async () => ({ data: { user: { id: 'verified-user' } }, error: null }) },
+      from: (table) => queryFor(rowsByTable[table]),
+    }
+
+    const access = await loadCurrentAccessProfile(client)
+    expect(access.roles).toEqual(['management'])
+    expect(getAllowedReportKeys(access)).toEqual(['summary', 'trends'])
+  })
+
+  it('fails closed when the refreshed session is absent or cannot be verified', async () => {
+    const signedOutClient = { auth: { getUser: async () => ({ data: { user: null }, error: null }) } }
+    expect(getAllowedReportKeys(await loadCurrentAccessProfile(signedOutClient))).toEqual([])
+
+    const errorClient = { auth: { getUser: async () => ({ data: null, error: new Error('session expired') }) } }
+    await expect(loadCurrentAccessProfile(errorClient)).rejects.toThrow('session expired')
   })
 })

@@ -1,6 +1,26 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
+const browserErrors = new WeakMap()
+
+test.beforeEach(async ({ page }) => {
+  const errors = []
+  browserErrors.set(page, errors)
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+  await page.addInitScript(() => {
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled promise rejection:', event.reason)
+    })
+  })
+})
+
+test.afterEach(async ({ page }) => {
+  expect(browserErrors.get(page), 'browser console and unhandled promise errors').toEqual([])
+})
+
 async function enterDemo(page) {
   await page.goto('/')
   await page.getByRole('button', { name: /Continue to demo workspace/ }).click()
@@ -25,6 +45,19 @@ async function enterDemo(page) {
   await page.getByRole('button', { name: 'View KPI definitions' }).click()
   await expect(page.locator('.kpi-definitions[open]')).toBeVisible()
 }
+
+test('protects the workspace until sign-in or explicit demo entry and returns to the gate on sign-out', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: /Continue to demo workspace/ }).click()
+  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Executive dashboard' })).toHaveCount(0)
+})
 
 test('demo entry, navigation, shared filters, and employee search work', async ({ page }) => {
   const pageErrors = []

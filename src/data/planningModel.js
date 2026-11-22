@@ -1,4 +1,4 @@
-import { getImportedMonthMetrics } from './hrModel'
+import { employeeModelKey, getImportedMonthMetrics } from './hrModel'
 
 const isPresent = (value) => value !== null && value !== undefined && value !== ''
 const number = (value) => isPresent(value) && Number.isFinite(Number(value)) ? Number(value) : 0
@@ -87,7 +87,7 @@ function budgetReport(model, month, asOfDate, filters, { canReadIncrements = tru
   let payrollByDepartmentAndCompany = new Map()
   if (payrollIsComplete && rosterIsComplete) {
     const data = getImportedMonthMetrics(model, month, filters, asOfDate)
-    const hasUnknownPayrollReferences = model.payroll.some((row) => row.reportingMonth === month && !model.employees.has(String(row.employeeId).trim().toUpperCase()))
+    const hasUnknownPayrollReferences = model.payroll.some((row) => row.reportingMonth === month && !model.employees.has(employeeModelKey(row)))
     payrollActualAvailable = data.headcount.complete && data.payroll.missingEmployeeCount === 0 && !hasUnknownPayrollReferences
     if (payrollActualAvailable) {
       data.payroll.byDepartment.forEach((row) => {

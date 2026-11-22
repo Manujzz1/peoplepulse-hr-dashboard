@@ -59,7 +59,7 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
           <thead><tr>{tableColumns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead>
           <tbody>
             {filtered.map((employee) => (
-              <tr key={employee.id}>
+              <tr key={employee.employeeRecordId || employee.id}>
                 {tableColumns.map(({ key, format }) => (
                   <td key={key}>
                     {key === 'name'
@@ -531,7 +531,7 @@ function ProjectsView({ employees, trends, projectAssignments = employees, selec
   const allocationDirectory = selectedProject === 'All projects'
     ? allAllocationDirectory
     : allAllocationDirectory.filter((employee) => employee.project === selectedProject)
-  const assignedEmployeeIds = new Set(allocationDirectory.map((employee) => employee.employeeId || employee.id))
+  const assignedEmployeeIds = new Set(allocationDirectory.map((employee) => employee.employeeRecordId || employee.employeeId || employee.id))
   const activeResourceCount = selectedProject === 'All projects' ? employees.length : assignedEmployeeIds.size
   const allocated = selectedProject === 'All projects'
     ? employees.reduce((sum, employee) => sum + Number(employee.allocation || 0), 0)

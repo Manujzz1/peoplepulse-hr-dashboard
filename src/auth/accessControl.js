@@ -6,7 +6,7 @@ export const PAGE_PERMISSIONS = {
   attendance: ['attendance.read', 'employee.read'],
   performance: ['performance.read', 'employee.read'],
   projects: ['projects.read', 'employee.read'],
-  dataImport: ['imports.write', 'employee.read'],
+  dataImport: ['imports.read', 'imports.write', 'employee.read'],
   dataQuality: ['imports.read'],
   reports: ['reports.aggregate'],
   recruitment: ['recruitment.read'],
@@ -69,6 +69,12 @@ export function deriveAccessProfile(roleRows = [], permissionRows = [], departme
   }
   return {
     roles,
+    scopeKey: JSON.stringify([
+      roleRows.map(({ role_key, organization_id, company_id, department_id }) =>
+        JSON.stringify([role_key, organization_id, company_id, department_id])).sort(),
+      [...permissions].sort(),
+      Object.entries(permissionDepartmentScopes).sort().map(([key, names]) => [key, [...names].sort()]),
+    ]),
     roleLabel: roles.map((role) => ROLE_LABELS[role] || role).join(', '),
     permissions,
     isDepartmentScoped: Object.keys(permissionDepartmentScopes).length > 0,
@@ -126,4 +132,15 @@ export async function loadAccessProfile(client, userId) {
   if (permissionError) throw permissionError
   if (departmentResult.error) throw departmentResult.error
   return deriveAccessProfile(roleRows, permissionRows || [], departmentResult.data || [])
+}
+
+// Revalidate the current session before sensitive client-side actions such as
+// generating a report file. This is defense in depth; database RLS remains the
+// authorization boundary for any live data query.
+export async function loadCurrentAccessProfile(client) {
+  if (!client?.auth?.getUser) throw new Error('Authenticated Supabase client is unavailable')
+  const { data, error } = await client.auth.getUser()
+  if (error) throw error
+  if (!data?.user?.id || data.user.is_anonymous) return deriveAccessProfile()
+  return { ...await loadAccessProfile(client, data.user.id), userId: data.user.id }
 }
