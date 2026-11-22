@@ -62,10 +62,11 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   const attrition = averageHeadcount ? exits / averageHeadcount * 100 : null
   const previousPayrollComplete = previous.payrollComplete !== false
   const currentPayrollComplete = current.payrollComplete !== false
-  const payrollVariance = previousPayrollComplete && currentPayrollComplete && previous.payroll > 0
+  const payrollVariance = previousPayrollComplete && currentPayrollComplete && previous.payroll > 0 && Number.isFinite(current.payroll)
     ? (current.payroll - previous.payroll) / previous.payroll * 100
     : null
-  const averageAttendance = average(employees, 'attendance')
+  const averageAttendance = Object.hasOwn(current, 'attendanceAveragePercentage')
+    ? current.attendanceAveragePercentage : average(employees, 'attendance')
   const annualCtc = employees.length > 0 && employees.every((employee) => isNumeric(employee.annualCtc))
     ? money(employees.reduce((sum, employee) => sum + Number(employee.annualCtc), 0))
     : null
@@ -88,7 +89,7 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
     { metric: 'Net movement', value: joiners - exits, unit: 'employees' },
     { metric: 'Attrition rate', value: attrition == null ? null : Math.round(attrition * 10) / 10, unit: '%' },
     { metric: 'Monthly gross payroll', value: money(current.payroll), unit: 'INR' },
-    { metric: 'Annualised gross payroll', value: money(current.payroll * 12), unit: 'INR' },
+    { metric: 'Annualised gross payroll', value: currentPayrollComplete && Number.isFinite(current.payroll) ? money(current.payroll * 12) : null, unit: 'INR' },
     { metric: 'Payroll month-on-month variance', value: payrollVariance == null ? null : Math.round(payrollVariance * 10) / 10, unit: '%' },
     { metric: 'Total annual CTC', value: annualCtc, unit: annualCtc == null ? 'Not fully provided' : 'INR' },
     { metric: 'Average attendance', value: averageAttendance == null ? null : Math.round(averageAttendance * 10) / 10, unit: '%' },

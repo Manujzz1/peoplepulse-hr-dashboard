@@ -207,6 +207,8 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   const monthRows = (rows) => rows.filter((row) => row.reportingMonth === reportingMonth && scopedEmployees.has(employeeModelKey(row)) && matches(scopedEmployees.get(employeeModelKey(row)), filters))
   const payrollRows = monthRows(model.payroll)
   const attendanceRows = monthRows(model.attendance)
+  const measuredAttendance = attendanceRows.filter((row) => row.attendancePercentage != null &&
+    row.attendancePercentage !== '' && Number.isFinite(Number(row.attendancePercentage)))
   const performanceRows = monthRows(model.performance)
   const allocationRows = monthRows(model.allocations)
   const projectCostBasis = ['payroll', 'allocation', 'hybrid'].includes(options.projectCostBasis) ? options.projectCostBasis : 'hybrid'
@@ -334,13 +336,21 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   const leaveRowsForYear = model.leave.filter((row) => row.reportingMonth >= financialYearStart && row.reportingMonth <= reportingMonth && model.employees.has(employeeModelKey(row)))
   const leaveDatasetPresent = model.leave.length > 0
   const leaveRecordsForYear = leaveDatasetPresent ? leaveRowsForYear : model.attendance.filter((row) => row.reportingMonth >= financialYearStart && row.reportingMonth <= reportingMonth && row.leaveTaken != null)
+  const attendanceLeaveCoverage = new Map()
+  if (!leaveDatasetPresent) {
+    for (const row of leaveRecordsForYear) {
+      if (!attendanceLeaveCoverage.has(row.reportingMonth)) attendanceLeaveCoverage.set(row.reportingMonth, new Set())
+      attendanceLeaveCoverage.get(row.reportingMonth).add(employeeModelKey(row))
+    }
+  }
   const attendanceLeaveYtdComplete = !leaveDatasetPresent && financialYearMonths.every((value) => {
     if (!model.completeness.attendance.has(value)) return false
     const parsed = parseMonth(value)
     const monthEnd = Date.UTC(parsed.year, parsed.month + 1, 0, 23, 59, 59, 999)
     const activeEmployees = [...model.employees.values()].map((employee) => employeeAt(model, employee, monthEnd))
       .filter((employee) => matches(employee, filters) && activeOn(employee, monthEnd))
-    return activeEmployees.every((employee) => model.attendance.some((row) => row.reportingMonth === value && employeeModelKey(row) === employeeModelKey(employee) && row.leaveTaken != null))
+    const coveredEmployees = attendanceLeaveCoverage.get(value)
+    return activeEmployees.every((employee) => coveredEmployees?.has(employeeModelKey(employee)))
   })
   leaveRecordsForYear.forEach((row) => {
     const id = employeeModelKey(row)
@@ -556,10 +566,11 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
       componentFields: payrollComponentFields,
     },
     attendance: {
-      averagePercentage: avg(attendanceRows, (row) => row.attendancePercentage),
+      averagePercentage: avg(measuredAttendance, (row) => row.attendancePercentage),
+      measuredEmployeeCount: measuredAttendance.length,
       lopDays: sum(attendanceRows, (row) => row.lopDays),
       leaveTaken: sum(attendanceRows, (row) => row.leaveTaken),
-      byDepartment: [...attendanceRows.reduce((groups, row) => {
+      byDepartment: [...measuredAttendance.reduce((groups, row) => {
         const department = scopedEmployees.get(employeeModelKey(row))?.department || 'Not specified'
         const group = groups.get(department) || { department, headcount: 0, payroll: 0, incrementCost: 0, increment: 0, attendanceTotal: 0 }
         group.headcount += 1

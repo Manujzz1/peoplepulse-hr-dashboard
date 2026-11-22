@@ -114,7 +114,9 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
   const current = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
   const active = current.active
-  const attendance = current.attendanceAveragePercentage ?? (active.length ? active.reduce((sum, employee) => sum + employee.attendance, 0) / active.length : 0)
+  const attendance = Object.hasOwn(current, 'attendanceAveragePercentage')
+    ? current.attendanceAveragePercentage
+    : active.length ? active.reduce((sum, employee) => sum + employee.attendance, 0) / active.length : null
   const openingHeadcount = current.openingHeadcount ?? previous.headcount
   const averageHeadcount = (openingHeadcount + current.headcount) / 2
   const attrition = averageHeadcount ? current.exits.length / averageHeadcount * 100 : 0
@@ -136,7 +138,7 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
         <MetricCard label="Joiners" value={current.joiners.length} detail={`${periodLabel} additions`} tone="green" icon={ArrowUpRight} />
         <MetricCard label="Exits" value={current.exits.length} detail={`${periodLabel} exits`} tone="rose" icon={ArrowDown} />
         <MetricCard label="Attrition rate" value={`${attrition.toFixed(1)}%`} detail="Exits / average period headcount" tone="amber" icon={Activity} />
-        <MetricCard label="Attendance" value={`${attendance.toFixed(1)}%`} detail="average reported attendance" tone="teal" icon={Check} />
+        <MetricCard label="Attendance" value={attendance == null ? 'Unavailable' : `${attendance.toFixed(1)}%`} detail="average reported attendance" tone="teal" icon={Check} />
       </div>
       <div className="metric-grid executive-detail-metrics">
         <MetricCard label="Opening headcount" value={openingHeadcount} detail="Active at prior period end" tone="blue" icon={UsersRound} />
@@ -295,10 +297,16 @@ function PayrollView({ employees, trends, departments, selectedMonth, selectedDa
   const annualCtcUnavailable = isImported && (selected.missingAnnualCtcCount > 0 || employees.some((employee) => employee.annualCtc == null))
   const incrementCost = isImported ? selected.incrementMonthlyCostImpact : employees.reduce((sum, employee) => sum + (employee.monthlySalary - employee.monthlyBase), 0)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
-  const variance = previous.payroll && previous.payrollComplete !== false ? ((selected.payroll - previous.payroll) / previous.payroll) * 100 : null
+  const variance = previous.payroll > 0 && previous.payrollComplete !== false && selected.payrollComplete !== false && Number.isFinite(selected.payroll) ? ((selected.payroll - previous.payroll) / previous.payroll) * 100 : null
   const employeesWithIncrement = employees.filter((employee) => employee.incrementPercent != null)
   const incrementAverage = isImported ? selected.incrementAveragePercent : employeesWithIncrement.length ? employeesWithIncrement.reduce((sum, employee) => sum + employee.incrementPercent, 0) / employeesWithIncrement.length : null
-  const trend = trends.map((item, index) => ({ ...item, variance: index && item.payroll != null && trends[index - 1].payroll > 0 ? Math.round(((item.payroll - trends[index - 1].payroll) / trends[index - 1].payroll) * 1000) / 10 : null }))
+  const trend = trends.map((item, index) => {
+    const prior = trends[index - 1]
+    const adjacent = !item.reportingMonth || prior?.reportingMonth === getPreviousMonthValue(item.reportingMonth)
+    const variance = adjacent && item.payroll != null && prior?.payroll > 0
+      ? Math.round(((item.payroll - prior.payroll) / prior.payroll) * 1000) / 10 : null
+    return { ...item, variance }
+  })
   return (
     <>
       <div className="metric-grid four-metrics">
@@ -354,8 +362,8 @@ function AttendanceView({ employees, trends, departments, selectedMonth, selecte
   const selected = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const attendanceDepartments = isImported ? selected.attendanceDepartmentData : departments
   const hasAttendanceTrend = isImported ? trends.some((item) => item.attendance != null) : employees.length > 0
-  const averageAttendance = isImported ? selected.attendanceAveragePercentage ?? 0 : employees.length ? employees.reduce((sum, employee) => sum + employee.attendance, 0) / employees.length : 0
-  const absenteeism = 100 - averageAttendance
+  const averageAttendance = isImported ? selected.attendanceAveragePercentage : employees.length ? employees.reduce((sum, employee) => sum + employee.attendance, 0) / employees.length : null
+  const nonPresence = averageAttendance == null ? null : 100 - averageAttendance
   const lopDays = isImported ? selected.attendanceLopDays : employees.reduce((sum, employee) => sum + employee.lopDays, 0)
   const leaveAccess = isImported ? selected.leaveAccess ?? canReadLeave : canReadLeave
   const financialYearLabel = financialYearRangeLabel(financialYearStartMonth)
@@ -376,8 +384,8 @@ function AttendanceView({ employees, trends, departments, selectedMonth, selecte
   return (
     <>
       <div className="metric-grid four-metrics">
-        <MetricCard label="Attendance percentage" value={`${averageAttendance.toFixed(1)}%`} detail="Average reported attendance" tone="teal" icon={Check} />
-        <MetricCard label="Absenteeism rate" value={`${absenteeism.toFixed(1)}%`} detail="100% less attendance rate" tone="amber" icon={Activity} />
+        <MetricCard label="Attendance percentage" value={averageAttendance == null ? 'Unavailable' : `${averageAttendance.toFixed(1)}%`} detail="Average reported attendance" tone="teal" icon={Check} />
+        <MetricCard label="Non-presence rate" value={nonPresence == null ? 'Unavailable' : `${nonPresence.toFixed(1)}%`} detail="Includes time away that may be approved leave" tone="amber" icon={Activity} />
         <MetricCard label="LOP days" value={lopDays} detail={isImported ? 'Reported attendance rows for selected month' : 'Synthetic sample for selected month'} tone="rose" icon={CalendarDays} />
         <MetricCard label="Leave utilisation" value={!leaveAccess ? 'Restricted' : leaveUtilisation == null ? 'Not provided' : `${leaveUtilisation.toFixed(1)}%`} detail={!leaveAccess ? leaveUnavailableReason : isImported ? leaveUtilisation == null ? leaveUnavailableReason : `${financialYearLabel} FYTD · Leave records · days availed / leave available` : `${financialYearLabel} FYTD · synthetic allowance of ${DEMO_ANNUAL_LEAVE_ENTITLEMENT_DAYS} days per employee`} tone="violet" icon={CalendarDays} />
       </div>

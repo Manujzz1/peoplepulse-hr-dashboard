@@ -89,6 +89,17 @@ Encrypt backup contents in transit and at rest. Keep the archive, user data, and
 
 ## Release and recovery decision
 
+### Independent verifier record
+
+Store evidence in the approved restricted location. Use one record per rehearsal.
+
+- [ ] Record source project, UTC checkpoint, archive and manifest identifiers, PostgreSQL and extension versions, and independent hash verification.
+- [ ] Record runtime isolation and the encrypted destinations for database files, WAL, tablespaces, temporary files, logs and credentials.
+- [ ] Compare restored aggregate counts and the migration version inventory. Verify platform role mapping, application ownership, role membership, grants, RLS, functions and triggers.
+- [ ] Verify permitted and denied tenant reads and authorized offline Auth login or reset. Record whether sessions must be reissued. Verify Storage object recovery independently if used.
+- [ ] Record excluded services, vault references, recovery time, data-loss interval and discrepancies. If a step fails, quarantine the rehearsal copy on encrypted storage, record the failure, and repeat on a clean target after review.
+- [ ] Capture operator and independent verifier sign-off with date and outcome. Keep recovery status **NOT VERIFIED** until both sign and resolve mandatory discrepancies.
+
 - A second authorized operator verifies the source and target identities, artifact integrity, restore results, and tenant and Auth controls. Both operators record the approved checkpoint and elapsed restore time.
 - If a migration stops partway, keep imports disabled, record the applied versions, and inspect transaction state before retrying. Prefer a reviewed forward fix for a narrow policy or function problem. An approved RPC execute revoke can stop import submissions while retaining batch and audit data.
 - Restore a production checkpoint only after separate approval and reconciliation of writes made after the checkpoint. Handle frontend rollback separately using the preceding known-good Vercel deployment.

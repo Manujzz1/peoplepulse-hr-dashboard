@@ -116,7 +116,17 @@ describe('scoped live report exports with synthetic data', () => {
     await waitFor(() => expect(popup.document.write).toHaveBeenCalledOnce())
     expect(popup.document.write.mock.calls[0][0]).toContain('Synthetic Alpha')
     expect(popup.document.write.mock.calls[0][0]).not.toContain('Synthetic Bravo')
-    expect(currentProfile).toHaveBeenCalledTimes(4)
+    expect(currentProfile).toHaveBeenCalledTimes(6)
+  })
+
+  it.each(['Download Excel', 'Download PDF'])('withholds %s if access changes while generating it', async (button) => {
+    const { captureBlob, payrollProfile } = reportFixture()
+    currentProfile.mockResolvedValueOnce(payrollProfile).mockResolvedValue({ ...payrollProfile, scopeKey: 'changed-company' })
+    fireEvent.click(screen.getByRole('button', { name: button }))
+    await screen.findByRole('alert')
+    expect(currentProfile).toHaveBeenCalledTimes(2)
+    expect(captureBlob).not.toHaveBeenCalled()
+    expect(savePdf).not.toHaveBeenCalled()
   })
 
   it.each(['Download CSV', 'Download Excel', 'Download PDF', 'Print / Save as PDF'])('denies %s after company access changes', async (button) => {

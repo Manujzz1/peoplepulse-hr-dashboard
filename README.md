@@ -98,6 +98,8 @@ Imported rows exist only in React memory and are cleared by a page refresh or ta
 
 ## Deployment
 
+Before releasing, review [management reporting and data coverage](docs/management-reporting.md), the [deployment checklist](docs/deployment-readiness.md), the [production migration runbook](docs/production-migration-runbook.md), and the [independent restore procedure](docs/database-recovery-plan.md). Keep Preview disconnected from production data and credentials, and keep live imports disabled pending separate approval.
+
 The app is a standard Vite static build. `vercel.json` configures SPA deep-link fallback and baseline response security headers. Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` as Vercel environment variables for Production, Preview, and Development as needed. These are public browser configuration values; never add a service-role or secret key, or confidential data, to a `VITE_` variable.
 
 For Vercel, import the repository with the Vite preset, keep the root directory at the project root, use `npm run build`, and set output directory to `dist`. For GitHub, `.github/workflows/ci.yml` runs dependency installation, lint, unit tests, Playwright browser tests, and a production build on pushes to `main` and pull requests. It installs Playwright Chromium and starts Vite for the browser suite. The workflow does not deploy. GitHub Pages can host the build output, but its base path must be configured for the repository URL before publishing. No repository creation, commit, push, or deployment is performed by this project setup.

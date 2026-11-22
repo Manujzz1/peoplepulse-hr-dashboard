@@ -92,7 +92,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
   const [error, setError] = useState('')
   const current = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
-  const planning = useMemo(() => dataSource === 'imported' ? {
+  const planning = useMemo(() => (dataSource === 'imported' || dataSource === 'live') && importedModel ? {
     recruitment: getPlanningReport(importedModel, 'recruitment', selectedMonth, selectedDate, filters),
     contracts: getPlanningReport(importedModel, 'contracts', selectedMonth, selectedDate, filters),
     budget: getPlanningReport(importedModel, 'budget', selectedMonth, selectedDate, filters, { canReadIncrements: allowedReports.includes('increments') }),
@@ -112,8 +112,8 @@ export default function ReportsCenter({ employees, departments, trends, selected
     incrementBandLimits,
   }), [selectedMonth, selectedDate, employees, departments, trends, current, previous, sourceLabel, projectAssignments, planning, filters, incrementBandLimits])
   const visibleReports = reports.filter((report) => allowedReports.includes(report.key))
-  const activeReport = visibleReports.find((report) => report.key === selectedReport) || visibleReports[0] || reports[0]
-  const reportKey = activeReport.key
+  const activeReport = visibleReports.find((report) => report.key === selectedReport) || visibleReports[0]
+  const reportKey = activeReport?.key
   const rows = reportData[reportKey] || []
   const columns = REPORT_COLUMNS[reportKey]
   const previewRows = rows.slice(0, 12)
@@ -123,7 +123,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
     if (!supabase) throw new Error('The authenticated database connection is unavailable.')
     const profile = await loadCurrentAccessProfile(supabase)
     if (dataSource === 'live' && !isCurrentExportScope(profile, liveUserId, liveScopeKey)) return []
-    return getAllowedReportKeys(profile)
+    return getAllowedReportKeys(profile).filter((key) => allowedReports.includes(key))
   }
 
   const verifyReportExport = async (reportKey) => {
@@ -191,6 +191,14 @@ export default function ReportsCenter({ employees, departments, trends, selected
         sheetFor(workbook, name, rows, REPORT_COLUMNS[key])
       })
       const buffer = await workbook.xlsx.writeBuffer()
+      if (dataSource === 'live') {
+        const stillAllowed = await getCurrentAllowedReports()
+        if (!worksheets.every(([, key]) => stillAllowed.includes(key))) {
+          setError('Your access changed while the export was being prepared. Reload the workspace.')
+          setStatus('')
+          return
+        }
+      }
       saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `peoplepulse-hr-mis-${selectedMonth}.xlsx`)
       setStatus('Excel HR MIS downloaded with the current filter selection and all available report worksheets.')
     } catch {
@@ -310,6 +318,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
           pdf.text(`Page ${pdf.internal.getNumberOfPages()}`, pageWidth - 40, pageHeight - 18, { align: 'right' })
         },
       })
+      if (dataSource === 'live' && !await verifyReportExport(reportKey)) return
       pdf.save(filename(activeReport.title, selectedMonth).replace(/\.csv$/, '.pdf'))
       setStatus(`${activeReport.label} PDF downloaded with the current filters.`)
     } catch (pdfError) {
@@ -335,6 +344,8 @@ export default function ReportsCenter({ employees, departments, trends, selected
       setStatus('')
     }
   }
+
+  if (!activeReport) return <Panel title="Management Reports Centre"><p>No reports are available for your current access.</p></Panel>
 
   return (
     <div className="reports-center">

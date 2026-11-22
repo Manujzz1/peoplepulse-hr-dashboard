@@ -36,6 +36,16 @@ const staged = {
 }
 
 describe('standardised monthly HR model', () => {
+  it('distinguishes missing attendance from a reported zero', () => {
+    const fixture = structuredClone(staged)
+    const selected = fixture.attendance.rows.filter((row) => row.reportingMonth === '2025-03')
+    selected[0].attendancePercentage = null
+    selected[1].attendancePercentage = 0
+    const result = () => getImportedMonthMetrics(createHrModel(fixture), '2025-03').attendance
+    expect(result()).toMatchObject({ averagePercentage: 0, employeeCount: 2, measuredEmployeeCount: 1, byDepartment: [{ attendance: 0 }] })
+    selected[1].attendancePercentage = null
+    expect(result()).toMatchObject({ averagePercentage: null, measuredEmployeeCount: 0, byDepartment: [] })
+  })
   it('documents formula, inputs, scope, completeness, unit, rounding and example for every catalogued KPI', () => {
     const required = ['name', 'description', 'formula', 'fields', 'period', 'filters', 'completeness', 'unit', 'rounding', 'example']
     expect(Object.keys(KPI_CATALOG).length).toBeGreaterThanOrEqual(20)
