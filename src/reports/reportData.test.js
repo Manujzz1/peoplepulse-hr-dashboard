@@ -16,6 +16,18 @@ const base = {
 }
 
 describe('filtered management report data', () => {
+  it('keeps missing attendance and incomplete payroll comparisons unavailable', () => {
+    const report = createDashboardReport({
+      ...base,
+      current: { ...base.current, payrollComplete: false, attendanceAveragePercentage: null },
+    })
+    const summary = Object.fromEntries(report.summary.map(({ metric, value }) => [metric, value]))
+    expect(summary).toMatchObject({
+      'Average attendance': null,
+      'Annualised gross payroll': null,
+      'Payroll month-on-month variance': null,
+    })
+  })
   it('uses dashboard metrics for movement and payroll variance', () => {
     const report = createDashboardReport({ ...base, filters: { company: 'Northstar Labs', department: 'People', location: 'Pune', employmentType: 'Permanent' } })
     expect(report.summary.find((row) => row.metric === 'Average headcount').value).toBe(95)

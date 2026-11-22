@@ -4,6 +4,7 @@ import {
   FileText, Info, Trash2, UploadCloud,
 } from 'lucide-react'
 import { Panel } from './DashboardParts'
+import ImportBatchReview from './ImportBatchReview'
 import { autoMapColumns, findDuplicateMappings, validateMappedRows } from '../import/validateImport'
 import { IMPORT_CATEGORIES, IMPORT_SCHEMAS, MAX_IMPORT_BYTES, MONTHLY_IMPORT_CATEGORIES } from '../import/importSchemas'
 import { parseImportFile } from '../import/fileParsers'
@@ -25,7 +26,7 @@ function SummaryCard({ label, value, tone }) {
   return <div className={`import-summary-card ${tone || ''}`}><span>{label}</span><strong>{value}</strong></div>
 }
 
-export default function DataImportCenter({ dataSource, onDataSourceChange, stagedImports, setStagedImports, importHistory = [], importRollback, onImportStaged = () => {}, onRollback = () => {}, onStagedRemoved = () => {} }) {
+export default function DataImportCenter({ dataSource, onDataSourceChange, stagedImports, setStagedImports, importHistory = [], importRollback, onImportStaged = () => {}, onRollback = () => {}, onStagedRemoved = () => {}, liveImportsEnabled = false, databaseReady = false, databaseCompanies = [], databaseWorkspace = null, databaseBatches = [], databasePermissions = {}, onSubmitDatabase = async () => {}, onTransitionBatch = async () => {}, onInspectBatch }) {
   const [category, setCategory] = useState('employeeMaster')
   const [fileName, setFileName] = useState('')
   const [sheets, setSheets] = useState([])
@@ -40,10 +41,13 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
   const [importMode, setImportMode] = useState('append')
   const [masterAsOf, setMasterAsOf] = useState('')
   const [payrollControlTotals, setPayrollControlTotals] = useState({})
+  const [databaseCompanyId, setDatabaseCompanyId] = useState('')
+  const [databaseActionLoading, setDatabaseActionLoading] = useState(false)
+  const [inspectionId, setInspectionId] = useState(null)
   const requestId = useRef(0)
 
   const activeSheet = sheets.find((sheet) => sheet.name === sheetName)
-  const validationSource = useMemo(() => ({ activeSheet, category, mapping, stagedImports }), [activeSheet, category, mapping, stagedImports])
+  const validationSource = useMemo(() => ({ activeSheet, category, mapping, stagedImports, databaseCompanyId, databaseWorkspace }), [activeSheet, category, mapping, stagedImports, databaseCompanyId, databaseWorkspace])
   const currentValidationState = validationState?.source === validationSource ? validationState : null
   const validation = currentValidationState?.result || null
   const payrollMonths = useMemo(() => category === 'payroll' && validation
@@ -58,21 +62,24 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
   const unmappedRequired = (IMPORT_SCHEMAS[category] || []).filter((field) => field.required && (mapping[field.key] === '' || mapping[field.key] == null))
   useEffect(() => {
     if (!activeSheet || !activeSheet.headers.length) return undefined
-    const employeeIds = stagedImports.employeeMaster?.rows?.map((row) => row.employeeId)
-    const projectIds = stagedImports.projectMaster?.rows?.map((row) => row.projectId)
-    const departmentNames = stagedImports.departmentMaster?.rows?.map((row) => row.department)
-    const locationNames = stagedImports.locationMaster?.rows?.map((row) => row.location)
+    const databaseCompanyRows = (rows) => rows.filter((row) => row.company_id === databaseCompanyId)
+    const employees = databaseCompanyRows(databaseWorkspace?.rowsByTable?.employees || [])
+    const employeeIds = stagedImports.employeeMaster?.rows?.map((row) => row.employeeId) || employees.map((row) => row.employee_code)
+    const projectIds = stagedImports.projectMaster?.rows?.map((row) => row.projectId) || databaseCompanyRows(databaseWorkspace?.rowsByTable?.projects || []).map((row) => row.project_code)
+    const departmentNames = stagedImports.departmentMaster?.rows?.map((row) => row.department) || databaseCompanyRows(databaseWorkspace?.rowsByTable?.departments || []).map((row) => row.department_name)
+    const locationNames = stagedImports.locationMaster?.rows?.map((row) => row.location) || databaseCompanyRows(databaseWorkspace?.rowsByTable?.locations || []).map((row) => row.location_name)
+    const employeeRecords = stagedImports.employeeMaster?.rows || employees.map((row) => ({ employeeId: row.employee_code, hireDate: row.hire_date, exitDate: row.exit_date || '' }))
     const input = {
       category,
       headers: activeSheet.headers,
       rows: activeSheet.rows,
       mapping,
       context: {
-        employeeIds: category === 'employeeMaster' || !stagedImports.employeeMaster ? null : employeeIds,
-        employeeRecords: category === 'employeeHistory' ? stagedImports.employeeMaster?.rows || null : null,
-        projectIds: category === 'projectMaster' || !stagedImports.projectMaster ? null : projectIds,
-        departmentNames: category === 'departmentMaster' || !stagedImports.departmentMaster ? null : departmentNames,
-        locationNames: category === 'locationMaster' || !stagedImports.locationMaster ? null : locationNames,
+        employeeIds: category === 'employeeMaster' ? null : stagedImports.employeeMaster || databaseCompanyId ? employeeIds : null,
+        employeeRecords: category === 'employeeHistory' ? employeeRecords : null,
+        projectIds: category === 'projectMaster' ? null : stagedImports.projectMaster || databaseCompanyId ? projectIds : null,
+        departmentNames: category === 'departmentMaster' ? null : stagedImports.departmentMaster || databaseCompanyId ? departmentNames : null,
+        locationNames: category === 'locationMaster' ? null : stagedImports.locationMaster || databaseCompanyId ? locationNames : null,
       },
     }
     let worker
@@ -100,7 +107,7 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
       canceled = true
       worker?.terminate()
     }
-  }, [activeSheet, category, mapping, stagedImports, validationSource])
+  }, [activeSheet, category, mapping, stagedImports, validationSource, databaseWorkspace, databaseCompanyId])
 
   const resetFileState = () => {
     requestId.current += 1
@@ -250,11 +257,46 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
     }
   }
 
+  const submitDatabaseBatch = async () => {
+    const stage = stagedImports[category]
+    if (!databaseReady || !databaseCompanyId || !stage?.rows?.length) return
+    setDatabaseActionLoading(true)
+    setError('')
+    setSuccess('')
+    try {
+      const result = await onSubmitDatabase({ category, stage, companyId: databaseCompanyId })
+      setSuccess(result.reused
+        ? `This staged file already has batch ${result.batchId} (${result.status}). No duplicate rows were created.`
+        : `${result.totalRows} rows were submitted as batch ${result.batchId} (${result.status}) for independent review and approval. They are not visible in dashboards until published.`)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'The database import could not be submitted.')
+    } finally {
+      setDatabaseActionLoading(false)
+    }
+  }
+
+  const moveBatch = async (batch, nextStatus) => {
+    setDatabaseActionLoading(true)
+    setError('')
+    setSuccess('')
+    try {
+      const result = await onTransitionBatch(batch, nextStatus)
+      setSuccess(`Batch ${result.id} moved to ${result.status}.`)
+    } catch (transitionError) {
+      setError(transitionError instanceof Error ? transitionError.message : `The batch could not move to ${nextStatus}.`)
+    } finally {
+      setDatabaseActionLoading(false)
+    }
+  }
+
   const fields = IMPORT_SCHEMAS[category]
   const categoryLabel = IMPORT_CATEGORIES.find((item) => item.id === category)?.label
   const stagedCount = Object.values(stagedImports).reduce((sum, entry) => sum + entry.rows.length, 0)
   const issueRows = validation?.issues.slice(0, 80) || []
   const completenessValid = !(markComplete && category === 'employeeMaster' && !masterAsOf)
+  const canDatabasePermission = (permission) => liveImportsEnabled && (databasePermissions?.has?.('*') || databasePermissions?.has?.(permission))
+  const canInspect = (batch) => canDatabasePermission('imports.review') && batch.uploaded_by !== databaseWorkspace?.userId && ['Validated', 'Reviewed'].includes(batch.status)
+  const inspection = databaseBatches.find((batch) => batch.id === inspectionId && canInspect(batch))
   const stagedEmployeeIds = stagedImports.employeeMaster ? new Set(stagedImports.employeeMaster.rows.map((row) => String(row.employeeId).trim().toUpperCase())) : null
   const stagedProjectIds = stagedImports.projectMaster ? new Set(stagedImports.projectMaster.rows.map((row) => String(row.projectId).trim().toUpperCase())) : null
   const dependentStages = ['employeeHistory', 'payroll', 'attendance', 'leave', 'performance', 'increments', 'projectAllocation', 'exitRecords'].filter((id) => stagedImports[id])
@@ -269,9 +311,16 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
   return (
     <div className="import-center">
       <div className="import-intro-row">
-        <div><div className="eyebrow">PEOPLE PULSE <span>·</span> IN-MEMORY STAGING</div><h2>Data Import Centre</h2><p>Parse and validate files in this browser. Imported rows feed analytics only after source completeness and reference checks pass.</p></div>
-        <label className="import-source-selector"><Database size={16} /><span>Data source</span><select value={dataSource} onChange={(event) => onDataSourceChange(event.target.value)} aria-label="Dashboard data source"><option value="demo">Demo Data</option><option value="imported">Imported Data</option></select></label>
+        <div><div className="eyebrow">PEOPLE PULSE <span>·</span> {dataSource === 'live' ? 'LIVE IMPORT APPROVAL' : 'LOCAL STAGING'}</div><h2>Data Import Centre</h2><p>Parse and validate files locally. Live submissions enter the database approval workflow and stay hidden from dashboards until published.</p></div>
+        <label className="import-source-selector"><Database size={16} /><span>Data source</span><select value={dataSource} onChange={(event) => onDataSourceChange(event.target.value)} aria-label="Dashboard data source"><option value="live">Live organization data</option><option value="imported">Local import preview</option></select></label>
       </div>
+
+      {dataSource === 'live' && <Panel title="Organization import scope" subtitle="The current authenticated session and RLS policies determine which companies and batches are visible.">
+        <label className="filter-control"><span>Company</span><select value={databaseCompanyId} onChange={(event) => setDatabaseCompanyId(event.target.value)} aria-label="Import company"><option value="">Select a company</option>{databaseCompanies.map((item) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>
+        {!databaseReady && <StatusBanner kind="warning" icon={Info}>{liveImportsEnabled ? 'Database import requires a verified live session with import permission.' : 'Live imports are disabled in this deployment.'}</StatusBanner>}
+        {databaseBatches.length > 0 && <div className="import-table-scroll"><table><thead><tr><th>Dataset</th><th>Reporting month</th><th>Status</th><th>Rows</th><th>Workflow</th></tr></thead><tbody>{databaseBatches.map((batch) => <tr key={batch.id}><td>{batch.dataset_type}</td><td>{batch.reporting_month || '—'}</td><td>{batch.status}</td><td>{batch.total_rows}</td><td>{canInspect(batch) && <button type="button" className="export-button" disabled={databaseActionLoading} onClick={() => setInspectionId(batch.id)}>Inspect</button>}{batch.status === 'Reviewed' && canDatabasePermission('imports.approve') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Approved')}>Approve</button>}{batch.status === 'Approved' && canDatabasePermission('imports.publish') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Published')}>Publish</button>}{['Validated', 'Reviewed', 'Uploaded'].includes(batch.status) && canDatabasePermission('imports.review') && <button className="export-button" disabled={databaseActionLoading} onClick={() => moveBatch(batch, 'Rejected')}>Reject</button>}</td></tr>)}</tbody></table></div>}
+        {inspection && <ImportBatchReview key={JSON.stringify([databaseWorkspace?.userId, databaseWorkspace?.scopeKey, inspection.id])} batch={inspection} inspect={onInspectBatch} close={() => setInspectionId(null)} review={() => moveBatch(inspection, 'Reviewed')} busy={databaseActionLoading} />}
+      </Panel>}
 
       <StatusBanner kind="info" icon={Info}>Imported rows remain separate from Demo Data. They can power the analytics modules only after source completeness and employee/project reference checks pass for the selected reporting period.</StatusBanner>
 
@@ -358,7 +407,7 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
         {qualityReadiness ? <div className={`quality-readiness ${qualityReadiness.ready ? 'ready' : 'not-ready'}`}><strong>{qualityReadiness.ready ? `Ready for ${qualityMonth}` : `Not ready for ${qualityMonth}`}</strong>{!qualityReadiness.ready && <ul>{qualityReadiness.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}</div> : <StatusBanner kind="warning" icon={Info}>No reporting month is available yet. Employee Master and Project Master can be staged first; monthly data is needed to calculate period readiness.</StatusBanner>}
       </Panel>
 
-      <Panel title="In-memory staging" subtitle={`${stagedCount} valid rows staged across ${Object.keys(stagedImports).length} categories. Refreshing or closing this tab clears staged data.`} className="staged-panel">
+      <Panel title={dataSource === 'live' ? 'Validated local files' : 'In-memory staging'} subtitle={`${stagedCount} valid rows staged across ${Object.keys(stagedImports).length} categories. Refreshing or closing this tab clears staged data.`} className="staged-panel">
         {dependentStages.length > 0 && !stagedEmployeeIds && <StatusBanner kind="warning" icon={AlertCircle}>Employee references in staged records remain unchecked until an Employee Master is staged.</StatusBanner>}
         {allocationStages.length > 0 && !stagedProjectIds && <StatusBanner kind="warning" icon={AlertCircle}>Project references in staged allocations remain unchecked until a Project Master is staged.</StatusBanner>}
         {missingStagedEmployees.length > 0 && <StatusBanner kind="error" icon={AlertCircle}>{missingStagedEmployees.length} staged records no longer match the staged Employee Master. Revalidate those files before any future dashboard connection.</StatusBanner>}
@@ -368,6 +417,7 @@ export default function DataImportCenter({ dataSource, onDataSourceChange, stage
           const completion = MONTHLY_IMPORT_CATEGORIES.includes(item.id) ? stage.completeMonths.length ? `Complete: ${stage.completeMonths.join(', ')}` : 'Reporting periods incomplete' : item.id === 'employeeMaster' ? stage.completeAsOf ? `Complete as of ${stage.completeAsOf}` : 'Roster completeness unconfirmed' : stage.complete ? 'Complete dataset confirmed' : 'Dataset completeness unconfirmed'
           return <div className="staged-item" key={item.id}><span className="staged-icon"><CheckCircle2 size={16} /></span><span><strong>{item.label}</strong><small>{stage.rows.length} valid rows · {stage.fileName} · {completion}</small></span><button type="button" className="icon-button" aria-label={`Remove staged ${item.label}`} onClick={() => removeStaged(item.id)}><Trash2 size={15} /></button></div>
         })}</div> : <div className="import-empty"><Database size={18} /><span>No files staged. Previewing or validating a file does not replace or modify any existing dashboard data.</span></div>}
+        {dataSource === 'live' && stagedImports[category] && <div className="validation-actions"><span>Submitting creates an unpublished batch. Independent review, approval, and publish permissions are required before dashboard visibility.</span><button type="button" className="stage-button" disabled={!databaseReady || !databaseCompanyId || databaseActionLoading || Boolean(stagedImports[category].summary?.rejectedRows || stagedImports[category].summary?.warningCount)} onClick={submitDatabaseBatch}>{databaseActionLoading ? 'Submitting…' : 'Submit to approval workflow'}</button></div>}
       </Panel>
       <Panel title="Import history" subtitle="Recent staging actions · metadata only · one-step rollback is available for the latest action. This history is tab-scoped and cleared on sign out or refresh." className="import-history-panel">
         {importHistory.length ? <div className="import-table-scroll"><table><thead><tr><th>Staged at</th><th>Dataset</th><th>File</th><th>Action</th><th>Total</th><th>Valid</th><th>Rejected</th><th>Warnings</th><th>Periods</th><th>Status</th><th>Undo</th></tr></thead><tbody>{importHistory.slice(0, 10).map((entry) => <tr key={entry.id}><td><time dateTime={entry.stagedAt}>{entry.stagedAtLabel}</time></td><td>{entry.categoryLabel}</td><td>{entry.fileName}</td><td>{entry.action}</td><td>{entry.totalRows}</td><td>{entry.validRows}</td><td>{entry.rejectedRows}</td><td>{entry.warningCount}</td><td>{entry.periods.length ? entry.periods.join(', ') : '—'}</td><td>{entry.status}</td><td>{importRollback?.historyId === entry.id ? <button type="button" className="export-button" onClick={onRollback}>Undo staging</button> : '—'}</td></tr>)}</tbody></table></div> : <div className="import-empty"><Clock3 size={18} /><span>No successful staging actions in this tab yet. Preview and validation attempts are not recorded as imports.</span></div>}

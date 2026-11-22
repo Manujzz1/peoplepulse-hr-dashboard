@@ -62,10 +62,11 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   const attrition = averageHeadcount ? exits / averageHeadcount * 100 : null
   const previousPayrollComplete = previous.payrollComplete !== false
   const currentPayrollComplete = current.payrollComplete !== false
-  const payrollVariance = previousPayrollComplete && currentPayrollComplete && previous.payroll > 0
+  const payrollVariance = previousPayrollComplete && currentPayrollComplete && previous.payroll > 0 && Number.isFinite(current.payroll)
     ? (current.payroll - previous.payroll) / previous.payroll * 100
     : null
-  const averageAttendance = average(employees, 'attendance')
+  const averageAttendance = Object.hasOwn(current, 'attendanceAveragePercentage')
+    ? current.attendanceAveragePercentage : average(employees, 'attendance')
   const annualCtc = employees.length > 0 && employees.every((employee) => isNumeric(employee.annualCtc))
     ? money(employees.reduce((sum, employee) => sum + Number(employee.annualCtc), 0))
     : null
@@ -88,7 +89,7 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
     { metric: 'Net movement', value: joiners - exits, unit: 'employees' },
     { metric: 'Attrition rate', value: attrition == null ? null : Math.round(attrition * 10) / 10, unit: '%' },
     { metric: 'Monthly gross payroll', value: money(current.payroll), unit: 'INR' },
-    { metric: 'Annualised gross payroll', value: money(current.payroll * 12), unit: 'INR' },
+    { metric: 'Annualised gross payroll', value: currentPayrollComplete && Number.isFinite(current.payroll) ? money(current.payroll * 12) : null, unit: 'INR' },
     { metric: 'Payroll month-on-month variance', value: payrollVariance == null ? null : Math.round(payrollVariance * 10) / 10, unit: '%' },
     { metric: 'Total annual CTC', value: annualCtc, unit: annualCtc == null ? 'Not fully provided' : 'INR' },
     { metric: 'Average attendance', value: averageAttendance == null ? null : Math.round(averageAttendance * 10) / 10, unit: '%' },
@@ -160,8 +161,8 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   payroll.push({ department: 'Filtered total', employeeCount: employees.length, monthlyGrossPayrollINR: money(current.payroll), annualisedGrossPayrollINR: money(current.payroll * 12), annualCtcINR: annualCtc })
   const employeeCost = workforce.map(({ employeeId, employeeName, company, department, location, employmentType, monthlyGrossSalaryINR, annualCtcINR, ...components }) => ({ employeeId, employeeName, company, department, location, employmentType, monthlyGrossSalaryINR, annualCtcINR, ...components }))
   const attendanceRows = workforce.map(({ employeeId, employeeName, company, department, location, attendancePercentage }) => ({ employeeId, employeeName, company, department, location, attendancePercentage }))
-  const leaveLop = workforce.map(({ employeeId, employeeName, company, department, location, lopDays, leaveTaken }) => ({ employeeId, employeeName, company, department, location, lopDays, leaveTaken, leaveTakenYtd: employees.find((employee) => employee.id === employeeId)?.leaveTakenYtd ?? null }))
-  const performance = workforce.map(({ employeeId, employeeName, company, department, performanceScore }) => ({ employeeId, employeeName, company, department, performanceScore, performanceCategory: employees.find((employee) => employee.id === employeeId)?.performanceCategory ?? null }))
+  const leaveLop = workforce.map(({ employeeId, employeeName, company, department, location, lopDays, leaveTaken }, index) => ({ employeeId, employeeName, company, department, location, lopDays, leaveTaken, leaveTakenYtd: employees[index].leaveTakenYtd ?? null }))
+  const performance = workforce.map(({ employeeId, employeeName, company, department, performanceScore }, index) => ({ employeeId, employeeName, company, department, performanceScore, performanceCategory: employees[index].performanceCategory ?? null }))
   const increments = current.incrementAnalytics
     ? current.incrementAnalytics.rows.map((row) => ({
       employeeId: row.employeeId,
@@ -198,7 +199,7 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   projectAssignments.forEach((employee) => {
     const project = employee.project || 'Unallocated'
     const value = projectGroups.get(project) || { project, employeeIds: new Set(), allocationWeightedFTE: 0, allocationWeightedCostINR: 0 }
-    value.employeeIds.add(employee.id)
+    value.employeeIds.add(employee.employeeRecordId || employee.id)
     const allocation = Number(employee.allocation || 0)
     value.allocationWeightedFTE += allocation / 100
     value.allocationWeightedCostINR += Number(employee.monthlySalary || 0) * allocation / 100
@@ -234,8 +235,8 @@ export function createDashboardReport({ month, asOfDate, employees, departments,
   }
 }
 
-export function toCsv(rows, columns = Object.keys(rows[0] || {})) {
-  return serializeCsv(columns.map(reportColumnLabel), rows.map((row) => columns.map((key) => row[key] ?? '')))
+export function toCsv(rows, columns = Object.keys(rows[0] || {}), sourceLabel) {
+  return serializeCsv(columns.map(reportColumnLabel), rows.map((row) => columns.map((key) => row[key] ?? '')), sourceLabel)
 }
 
 import { serializeCsv } from '../data/csv'

@@ -44,7 +44,7 @@ export function ChartTooltip({ active, payload, label, currency = false, formatI
       {payload.map((item) => (
         <div className="tooltip-line" key={item.dataKey}>
           <span><i style={{ background: item.color || item.fill }} />{item.name}</span>
-          <b>{currency ? formatINR(item.value) : item.value}</b>
+          <b>{item.value == null ? 'Unavailable' : currency && formatINR ? formatINR(item.value) : item.value}</b>
         </div>
       ))}
     </div>

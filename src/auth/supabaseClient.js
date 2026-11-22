@@ -1,22 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
+import { readSupabaseConfig } from './supabaseConfig'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
-const urlLooksValid = (() => {
-  if (!supabaseUrl) return false
-  try {
-    return ['https:', 'http:'].includes(new URL(supabaseUrl).protocol)
-  } catch {
-    return false
-  }
-})()
+const config = readSupabaseConfig({
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+})
 
-export const supabaseConfigurationError = (supabaseUrl || supabaseAnonKey) && !(urlLooksValid && supabaseAnonKey)
-  ? 'Supabase configuration is incomplete. Set a valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
+export const supabaseConfigurationError = config.provided && !config.configured
+  ? 'Supabase configuration is incomplete. Set a valid VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.'
   : ''
-export const supabaseConfigured = Boolean(urlLooksValid && supabaseAnonKey)
+export const supabaseConfigured = config.configured
 export const supabase = supabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createClient(config.url, config.publishableKey, {
     auth: {
       storage: window.sessionStorage,
       storageKey: 'peoplepulse-auth-session',

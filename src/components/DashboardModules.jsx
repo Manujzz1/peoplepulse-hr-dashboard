@@ -36,8 +36,9 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
   )
 
   const exportCsv = () => {
-    const rows = filtered.map((employee) => tableColumns.map(({ key, format }) => format ? format(employee[key]) : employee[key]))
-    const csv = serializeCsv(tableColumns.map((column) => column.label), rows)
+    const rows = filtered.map((employee) => tableColumns.map(({ key, format }) =>
+      employee[key] != null && format ? format(employee[key]) : employee[key]))
+    const csv = serializeCsv(tableColumns.map((column) => column.label), rows, sourceLabel)
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
     link.href = url
@@ -59,7 +60,7 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
           <thead><tr>{tableColumns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead>
           <tbody>
             {filtered.map((employee) => (
-              <tr key={employee.id}>
+              <tr key={employee.employeeRecordId || employee.id}>
                 {tableColumns.map(({ key, format }) => (
                   <td key={key}>
                     {key === 'name'
@@ -67,8 +68,8 @@ function EmployeeTable({ employees, title = 'Employee directory', description = 
                       : key === 'department'
                         ? <span className="department-cell"><i />{employee[key]}</span>
                         : key === 'performanceScore'
-                          ? <span className="score-pill">{format ? format(employee[key]) : employee[key]}</span>
-                          : format ? format(employee[key]) : employee[key]}
+                          ? <span className="score-pill">{employee[key] == null ? 'Unavailable' : format ? format(employee[key]) : employee[key]}</span>
+                          : employee[key] == null ? 'Unavailable' : format ? format(employee[key]) : employee[key]}
                   </td>
                 ))}
               </tr>
@@ -114,7 +115,9 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
   const current = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
   const active = current.active
-  const attendance = current.attendanceAveragePercentage ?? (active.length ? active.reduce((sum, employee) => sum + employee.attendance, 0) / active.length : 0)
+  const attendance = Object.hasOwn(current, 'attendanceAveragePercentage')
+    ? current.attendanceAveragePercentage
+    : active.length ? active.reduce((sum, employee) => sum + employee.attendance, 0) / active.length : null
   const openingHeadcount = current.openingHeadcount ?? previous.headcount
   const averageHeadcount = (openingHeadcount + current.headcount) / 2
   const attrition = averageHeadcount ? current.exits.length / averageHeadcount * 100 : 0
@@ -136,7 +139,7 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
         <MetricCard label="Joiners" value={current.joiners.length} detail={`${periodLabel} additions`} tone="green" icon={ArrowUpRight} />
         <MetricCard label="Exits" value={current.exits.length} detail={`${periodLabel} exits`} tone="rose" icon={ArrowDown} />
         <MetricCard label="Attrition rate" value={`${attrition.toFixed(1)}%`} detail="Exits / average period headcount" tone="amber" icon={Activity} />
-        <MetricCard label="Attendance" value={`${attendance.toFixed(1)}%`} detail="average reported attendance" tone="teal" icon={Check} />
+        <MetricCard label="Attendance" value={attendance == null ? 'Unavailable' : `${attendance.toFixed(1)}%`} detail="average reported attendance" tone="teal" icon={Check} />
       </div>
       <div className="metric-grid executive-detail-metrics">
         <MetricCard label="Opening headcount" value={openingHeadcount} detail="Active at prior period end" tone="blue" icon={UsersRound} />
@@ -232,11 +235,13 @@ function ExecutiveView({ employees, trends, departments, selectedMonth, selected
   )
 }
 
-function WorkforceView({ employees, trends, departments, sourceLabel, isImported = false, selectedMonth, selectedDate, filters, getPeriodMetrics = getMonthMetrics }) {
+function WorkforceView({ employees, trends, departments, sourceLabel, isImported = false, workforceHeadcount, canReadEmployees = true }) {
   const locations = getGroupData(employees, 'location', 'location')
   const employment = getGroupData(employees, 'employmentType', 'employmentType')
   const gender = getGroupData(employees, 'gender', 'gender')
-  const exitAnalytics = isImported ? getPeriodMetrics(selectedMonth, filters, selectedDate).headcount : null
+  const { exitTypeDistribution = [], averageTenureAtExitYears } = workforceHeadcount ?? {}
+  const hasWorkforceTrend = trends.some(({ headcount, attrition }) => Number.isFinite(headcount) || Number.isFinite(attrition))
+  const hasMovementTrend = trends.some(({ joiners, exits }) => Number.isFinite(joiners) || Number.isFinite(exits))
   const tenureGroups = [
     { tenure: '< 1 year', headcount: employees.filter((employee) => employee.tenureYears < 1).length },
     { tenure: '1â€“3 years', headcount: employees.filter((employee) => employee.tenureYears >= 1 && employee.tenureYears < 3).length },
@@ -268,8 +273,17 @@ function WorkforceView({ employees, trends, departments, sourceLabel, isImported
             </BarChart>
           </ResponsiveContainer> : <EmptyChart />}
         </ChartPanel>
+        <ChartPanel title="Headcount and attrition trend" subtitle={trendPeriodLabel(trends)}>
+          {hasWorkforceTrend ? <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={trends} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
+              <CartesianGrid stroke="#eef0f5" vertical={false} /><XAxis dataKey="month" /><YAxis yAxisId="count" allowDecimals={false} /><YAxis yAxisId="rate" orientation="right" tickFormatter={(value) => `${value}%`} />
+              <Tooltip content={<ChartTooltip />} /><Legend />
+              <Line yAxisId="count" dataKey="headcount" name="Headcount" stroke="#627cf5" /><Line yAxisId="rate" dataKey="attrition" name="Attrition (%)" stroke="#e5798c" />
+            </LineChart>
+          </ResponsiveContainer> : <EmptyChart message="No verified headcount or attrition history for these filters." />}
+        </ChartPanel>
         <ChartPanel title="Monthly workforce comparison" subtitle={`Joiners and exits Â· ${trendPeriodLabel(trends)}`} className="wide-panel">
-          {employees.length ? <ResponsiveContainer width="100%" height="100%">
+          {hasMovementTrend ? <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={trends} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
               <CartesianGrid stroke="#eef0f5" vertical={false} /><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#9299a8', fontSize: 11 }} dy={8} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#9299a8', fontSize: 10 }} />
               <Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
@@ -277,13 +291,13 @@ function WorkforceView({ employees, trends, departments, sourceLabel, isImported
             </ComposedChart>
           </ResponsiveContainer> : <EmptyChart />}
         </ChartPanel>
-        {isImported && <ChartPanel title="Exit profile" subtitle={exitAnalytics.averageTenureAtExitYears == null ? 'Average tenure at exit unavailable' : `Average tenure at exit Â· ${exitAnalytics.averageTenureAtExitYears.toFixed(1)} years`}>
-          {exitAnalytics.exitTypeDistribution.length
-            ? <WorkforceTable data={exitAnalytics.exitTypeDistribution.map(({ exitType, count }) => ({ department: exitType, headcount: count }))} />
+        {isImported && <ChartPanel title="Exit profile" subtitle={!Number.isFinite(averageTenureAtExitYears) ? 'Average tenure at exit unavailable' : `Average tenure at exit Â· ${averageTenureAtExitYears.toFixed(1)} years`}>
+          {exitTypeDistribution?.length
+            ? <WorkforceTable data={exitTypeDistribution.map(({ exitType, count }) => ({ department: exitType, headcount: count }))} />
             : <EmptyChart message="No confirmed exits in this reporting period." />}
         </ChartPanel>}
       </div>
-      <EmployeeTable employees={employees} title="Workforce directory" sourceLabel={sourceLabel} />
+      {canReadEmployees && <EmployeeTable employees={employees} title="Workforce directory" description="Employees matching the current filters" sourceLabel={sourceLabel} />}
     </>
   )
 }
@@ -295,10 +309,16 @@ function PayrollView({ employees, trends, departments, selectedMonth, selectedDa
   const annualCtcUnavailable = isImported && (selected.missingAnnualCtcCount > 0 || employees.some((employee) => employee.annualCtc == null))
   const incrementCost = isImported ? selected.incrementMonthlyCostImpact : employees.reduce((sum, employee) => sum + (employee.monthlySalary - employee.monthlyBase), 0)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
-  const variance = previous.payroll && previous.payrollComplete !== false ? ((selected.payroll - previous.payroll) / previous.payroll) * 100 : null
+  const variance = previous.payroll > 0 && previous.payrollComplete !== false && selected.payrollComplete !== false && Number.isFinite(selected.payroll) ? ((selected.payroll - previous.payroll) / previous.payroll) * 100 : null
   const employeesWithIncrement = employees.filter((employee) => employee.incrementPercent != null)
   const incrementAverage = isImported ? selected.incrementAveragePercent : employeesWithIncrement.length ? employeesWithIncrement.reduce((sum, employee) => sum + employee.incrementPercent, 0) / employeesWithIncrement.length : null
-  const trend = trends.map((item, index) => ({ ...item, variance: index && item.payroll != null && trends[index - 1].payroll > 0 ? Math.round(((item.payroll - trends[index - 1].payroll) / trends[index - 1].payroll) * 1000) / 10 : null }))
+  const trend = trends.map((item, index) => {
+    const prior = trends[index - 1]
+    const adjacent = !item.reportingMonth || prior?.reportingMonth === getPreviousMonthValue(item.reportingMonth)
+    const variance = adjacent && item.payroll != null && prior?.payroll > 0
+      ? Math.round(((item.payroll - prior.payroll) / prior.payroll) * 1000) / 10 : null
+    return { ...item, variance }
+  })
   return (
     <>
       <div className="metric-grid four-metrics">
@@ -354,8 +374,8 @@ function AttendanceView({ employees, trends, departments, selectedMonth, selecte
   const selected = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const attendanceDepartments = isImported ? selected.attendanceDepartmentData : departments
   const hasAttendanceTrend = isImported ? trends.some((item) => item.attendance != null) : employees.length > 0
-  const averageAttendance = isImported ? selected.attendanceAveragePercentage ?? 0 : employees.length ? employees.reduce((sum, employee) => sum + employee.attendance, 0) / employees.length : 0
-  const absenteeism = 100 - averageAttendance
+  const averageAttendance = isImported ? selected.attendanceAveragePercentage : employees.length ? employees.reduce((sum, employee) => sum + employee.attendance, 0) / employees.length : null
+  const nonPresence = averageAttendance == null ? null : 100 - averageAttendance
   const lopDays = isImported ? selected.attendanceLopDays : employees.reduce((sum, employee) => sum + employee.lopDays, 0)
   const leaveAccess = isImported ? selected.leaveAccess ?? canReadLeave : canReadLeave
   const financialYearLabel = financialYearRangeLabel(financialYearStartMonth)
@@ -376,8 +396,8 @@ function AttendanceView({ employees, trends, departments, selectedMonth, selecte
   return (
     <>
       <div className="metric-grid four-metrics">
-        <MetricCard label="Attendance percentage" value={`${averageAttendance.toFixed(1)}%`} detail="Average reported attendance" tone="teal" icon={Check} />
-        <MetricCard label="Absenteeism rate" value={`${absenteeism.toFixed(1)}%`} detail="100% less attendance rate" tone="amber" icon={Activity} />
+        <MetricCard label="Attendance percentage" value={averageAttendance == null ? 'Unavailable' : `${averageAttendance.toFixed(1)}%`} detail="Average reported attendance" tone="teal" icon={Check} />
+        <MetricCard label="Non-presence rate" value={nonPresence == null ? 'Unavailable' : `${nonPresence.toFixed(1)}%`} detail="Includes time away that may be approved leave" tone="amber" icon={Activity} />
         <MetricCard label="LOP days" value={lopDays} detail={isImported ? 'Reported attendance rows for selected month' : 'Synthetic sample for selected month'} tone="rose" icon={CalendarDays} />
         <MetricCard label="Leave utilisation" value={!leaveAccess ? 'Restricted' : leaveUtilisation == null ? 'Not provided' : `${leaveUtilisation.toFixed(1)}%`} detail={!leaveAccess ? leaveUnavailableReason : isImported ? leaveUtilisation == null ? leaveUnavailableReason : `${financialYearLabel} FYTD · Leave records · days availed / leave available` : `${financialYearLabel} FYTD · synthetic allowance of ${DEMO_ANNUAL_LEAVE_ENTITLEMENT_DAYS} days per employee`} tone="violet" icon={CalendarDays} />
       </div>
@@ -531,7 +551,7 @@ function ProjectsView({ employees, trends, projectAssignments = employees, selec
   const allocationDirectory = selectedProject === 'All projects'
     ? allAllocationDirectory
     : allAllocationDirectory.filter((employee) => employee.project === selectedProject)
-  const assignedEmployeeIds = new Set(allocationDirectory.map((employee) => employee.employeeId || employee.id))
+  const assignedEmployeeIds = new Set(allocationDirectory.map((employee) => employee.employeeRecordId || employee.employeeId || employee.id))
   const activeResourceCount = selectedProject === 'All projects' ? employees.length : assignedEmployeeIds.size
   const allocated = selectedProject === 'All projects'
     ? employees.reduce((sum, employee) => sum + Number(employee.allocation || 0), 0)

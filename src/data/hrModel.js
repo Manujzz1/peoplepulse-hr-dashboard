@@ -3,6 +3,8 @@ import { financialYearMonthsFor } from './reportingCalendar'
 
 const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/
 const keyOf = (value) => String(value ?? '').trim().toUpperCase()
+export const employeeModelKey = (row) => keyOf(row.employeeRecordId || row.employeeId)
+const projectModelKey = (row) => keyOf(row?.projectRecordId || row?.projectId)
 
 const parseMonth = (value) => {
   const match = MONTH_PATTERN.exec(String(value ?? ''))
@@ -33,9 +35,9 @@ export const PAYROLL_COMPONENTS = Object.freeze([
 ])
 const numberOrNull = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value)
 export function createHrModel(staged = {}) {
-  const employees = new Map(rowsFor(staged, 'employeeMaster').map((employee) => [keyOf(employee.employeeId), employee]))
+  const employees = new Map(rowsFor(staged, 'employeeMaster').map((employee) => [employeeModelKey(employee), employee]))
   const employeeHistory = rowsFor(staged, 'employeeHistory')
-  const projects = new Map(rowsFor(staged, 'projectMaster').map((project) => [keyOf(project.projectId), project]))
+  const projects = new Map(rowsFor(staged, 'projectMaster').map((project) => [projectModelKey(project), project]))
   const payroll = rowsFor(staged, 'payroll')
   const attendance = rowsFor(staged, 'attendance')
   const leave = rowsFor(staged, 'leave')
@@ -46,7 +48,7 @@ export function createHrModel(staged = {}) {
   // employees omitted from it are still active. Conflicts stay unresolved.
   const exitDatesByEmployee = new Map()
   exitRecords.forEach((record) => {
-    const employeeKey = keyOf(record.employeeId)
+    const employeeKey = employeeModelKey(record)
     if (!employeeKey || !dateValue(record.exitDate)) return
     exitDatesByEmployee.set(employeeKey, [...(exitDatesByEmployee.get(employeeKey) || []), record.exitDate])
   })
@@ -61,10 +63,10 @@ export function createHrModel(staged = {}) {
       return
     }
     if (masterDate == null && uniqueDates.length === 1) {
-      const exitRecord = exitRecords.find((record) => keyOf(record.employeeId) === employeeKey && dateValue(record.exitDate) === uniqueDates[0])
+      const exitRecord = exitRecords.find((record) => employeeModelKey(record) === employeeKey && dateValue(record.exitDate) === uniqueDates[0])
       employees.set(employeeKey, { ...employee, exitDate: exitRecord.exitDate, exitType: exitRecord.exitType || '' })
     } else if (masterDate != null && uniqueDates.length === 1 && uniqueDates[0] === masterDate) {
-      const exitRecord = exitRecords.find((record) => keyOf(record.employeeId) === employeeKey && dateValue(record.exitDate) === masterDate)
+      const exitRecord = exitRecords.find((record) => employeeModelKey(record) === employeeKey && dateValue(record.exitDate) === masterDate)
       if (exitRecord?.exitType) employees.set(employeeKey, { ...employee, exitType: exitRecord.exitType })
     }
   })
@@ -75,8 +77,8 @@ export function createHrModel(staged = {}) {
 
   const unmatchedEmployees = [
     ...employeeHistory, ...payroll, ...attendance, ...leave, ...performance, ...increments, ...exitRecords, ...allocations,
-  ].filter((record) => !employees.has(keyOf(record.employeeId)))
-  const unmatchedProjects = allocations.filter((record) => !projects.has(keyOf(record.projectId)))
+  ].filter((record) => !employees.has(employeeModelKey(record)))
+  const unmatchedProjects = allocations.filter((record) => !projects.has(projectModelKey(record)))
 
   return {
     employees,
@@ -134,7 +136,7 @@ function employeeAt(model, employee, timestamp) {
   if (!model.completeness.employeeHistory || timestamp == null) return employee
   const history = model.employeeHistory
     .filter((row) => {
-      if (keyOf(row.employeeId) !== keyOf(employee.employeeId)) return false
+      if (employeeModelKey(row) !== employeeModelKey(employee)) return false
       const from = dateValue(row.effectiveFrom)
       const to = row.effectiveTo ? dateValue(row.effectiveTo) : null
       return from != null && from <= timestamp && (to == null || to + 86400000 - 1 >= timestamp)
@@ -158,7 +160,7 @@ export function getImportedEmployeeDirectory(model, asOfDate, filters = {}) {
         ? model.employeeHistory
           .filter((row) => {
             const effectiveFrom = dateValue(row.effectiveFrom)
-            return keyOf(row.employeeId) === keyOf(employee.employeeId) && effectiveFrom != null && effectiveFrom <= timestamp
+            return employeeModelKey(row) === employeeModelKey(employee) && effectiveFrom != null && effectiveFrom <= timestamp
           })
           .sort((left, right) => dateValue(left.effectiveFrom) - dateValue(right.effectiveFrom))
         : []
@@ -201,18 +203,20 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     const exited = employee.exitDate ? dateValue(employee.exitDate) : null
     return exited != null && exited >= monthStart && exited <= periodEnd && matches(employeeAt(model, employee, exited), filters)
   })
-  const scopedEmployees = new Map(periodEmployees.map((employee) => [keyOf(employee.employeeId), employee]))
-  const monthRows = (rows) => rows.filter((row) => row.reportingMonth === reportingMonth && scopedEmployees.has(keyOf(row.employeeId)) && matches(scopedEmployees.get(keyOf(row.employeeId)), filters))
+  const scopedEmployees = new Map(periodEmployees.map((employee) => [employeeModelKey(employee), employee]))
+  const monthRows = (rows) => rows.filter((row) => row.reportingMonth === reportingMonth && scopedEmployees.has(employeeModelKey(row)) && matches(scopedEmployees.get(employeeModelKey(row)), filters))
   const payrollRows = monthRows(model.payroll)
   const attendanceRows = monthRows(model.attendance)
+  const measuredAttendance = attendanceRows.filter((row) => row.attendancePercentage != null &&
+    row.attendancePercentage !== '' && Number.isFinite(Number(row.attendancePercentage)))
   const performanceRows = monthRows(model.performance)
   const allocationRows = monthRows(model.allocations)
   const projectCostBasis = ['payroll', 'allocation', 'hybrid'].includes(options.projectCostBasis) ? options.projectCostBasis : 'hybrid'
   const incrementRowsForMonth = model.increments.filter((row) => {
     const effective = dateValue(row.effectiveDate)
-    return effective != null && effective >= monthStart && effective <= periodEnd && model.employees.has(keyOf(row.employeeId)) && matches(employeeAt(model, model.employees.get(keyOf(row.employeeId)), effective), filters)
+    return effective != null && effective >= monthStart && effective <= periodEnd && model.employees.has(employeeModelKey(row)) && matches(employeeAt(model, model.employees.get(employeeModelKey(row)), effective), filters)
   }).map((row) => {
-    const employee = employeeAt(model, model.employees.get(keyOf(row.employeeId)), dateValue(row.effectiveDate))
+    const employee = employeeAt(model, model.employees.get(employeeModelKey(row)), dateValue(row.effectiveDate))
     const annualCostImpact = Number(row.revisedCtc) - Number(row.currentCtc)
     const incrementPercent = row.incrementPercentage == null
       ? Number(row.currentCtc) > 0 ? annualCostImpact / Number(row.currentCtc) * 100 : null
@@ -233,7 +237,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   const rejectedIncrementCount = incrementRowsForMonth.filter((row) => row.approvalStatus === 'Rejected').length
   const incrementUnmatchedCount = model.increments.filter((row) => {
     const effective = dateValue(row.effectiveDate)
-    return effective != null && effective >= monthStart && effective <= periodEnd && !model.employees.has(keyOf(row.employeeId))
+    return effective != null && effective >= monthStart && effective <= periodEnd && !model.employees.has(employeeModelKey(row))
   }).length
   const incrementComplete = model.completeness.increments.has(reportingMonth) && incrementUnmatchedCount === 0
   const incrementByDepartment = [...approvedIncrementRows.reduce((groups, row) => {
@@ -258,18 +262,18 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   const incrementBudgetComplete = model.completeness.hrBudget.has(reportingMonth) && incrementBudgetFiltersSupported
   const incrementBudget = incrementBudgetComplete ? sum(incrementBudgetRows, (row) => row.budgetAmount) : null
   const incrementActualMonthlyCost = incrementComplete ? sum(approvedIncrementRows, (row) => row.monthlyCostImpact) : null
-  const grossByEmployee = new Map(payrollRows.map((row) => [keyOf(row.employeeId), Number(row.monthlyGrossSalary)]))
+  const grossByEmployee = new Map(payrollRows.map((row) => [employeeModelKey(row), Number(row.monthlyGrossSalary)]))
 
   const allocationPercentByEmployee = new Map()
   allocationRows.forEach((row) => {
-    const id = keyOf(row.employeeId)
+    const id = employeeModelKey(row)
     allocationPercentByEmployee.set(id, (allocationPercentByEmployee.get(id) || 0) + Number(row.allocationPercentage || 0))
   })
-  const allocatedEmployees = new Set(allocationRows.map((row) => keyOf(row.employeeId)))
+  const allocatedEmployees = new Set(allocationRows.map((row) => employeeModelKey(row)))
   const overallocatedEmployees = [...allocationPercentByEmployee].filter(([, value]) => value > 100).map(([id]) => id)
-  const payrollProjectCostAvailable = payrollComplete && allocationRows.length > 0 && allocationRows.every((row) => grossByEmployee.has(keyOf(row.employeeId)))
+  const payrollProjectCostAvailable = payrollComplete && allocationRows.length > 0 && allocationRows.every((row) => grossByEmployee.has(employeeModelKey(row)))
   const allocationProjectCostAvailable = allocationRows.length > 0 && allocationRows.every((row) => row.monthlyGrossCost != null && row.monthlyGrossCost !== '')
-  const hybridProjectCostAvailable = allocationRows.length > 0 && allocationRows.every((row) => (payrollComplete && grossByEmployee.has(keyOf(row.employeeId))) || (row.monthlyGrossCost != null && row.monthlyGrossCost !== ''))
+  const hybridProjectCostAvailable = allocationRows.length > 0 && allocationRows.every((row) => (payrollComplete && grossByEmployee.has(employeeModelKey(row))) || (row.monthlyGrossCost != null && row.monthlyGrossCost !== ''))
   const projectCostAvailable = projectCostBasis === 'payroll' ? payrollProjectCostAvailable
     : projectCostBasis === 'allocation' ? allocationProjectCostAvailable
       : hybridProjectCostAvailable
@@ -277,9 +281,9 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     : projectCostBasis === 'allocation' ? 'Allocation row monthly gross'
       : 'Best available gross per employee (payroll, then allocation row)'
   const projectGrossCost = (row) => {
-    if (projectCostBasis === 'payroll') return projectCostAvailable ? grossByEmployee.get(keyOf(row.employeeId)) : null
+    if (projectCostBasis === 'payroll') return projectCostAvailable ? grossByEmployee.get(employeeModelKey(row)) : null
     if (projectCostBasis === 'allocation') return projectCostAvailable ? Number(row.monthlyGrossCost) : null
-    return payrollComplete && grossByEmployee.has(keyOf(row.employeeId)) ? grossByEmployee.get(keyOf(row.employeeId))
+    return payrollComplete && grossByEmployee.has(employeeModelKey(row)) ? grossByEmployee.get(employeeModelKey(row))
       : row.monthlyGrossCost == null || row.monthlyGrossCost === '' ? null : Number(row.monthlyGrossCost)
   }
   const projectCosts = projectCostAvailable ? allocationRows.reduce((total, row) => (
@@ -287,11 +291,11 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   ), 0) : null
   const projectGroups = new Map()
   allocationRows.forEach((row) => {
-    const projectKey = keyOf(row.projectId)
+    const projectKey = projectModelKey(row)
     const projectName = model.projects.get(projectKey)?.projectName || row.projectId
     const group = projectGroups.get(projectKey) || { projectId: row.projectId, project: projectName, employeeIds: new Set(), allocationTotal: 0, cost: 0 }
     const gross = projectGrossCost(row)
-    group.employeeIds.add(keyOf(row.employeeId))
+    group.employeeIds.add(employeeModelKey(row))
     group.allocationTotal += Number(row.allocationPercentage || 0)
     if (gross != null) group.cost += gross * Number(row.allocationPercentage || 0) / 100
     projectGroups.set(projectKey, group)
@@ -302,13 +306,13 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     return { projectId: group.projectId, project: group.project, headcount, allocated, available: Math.round(100 - allocated), allocationWeightedFTE: Math.round(group.allocationTotal / 100 * 100) / 100, cost: projectCostAvailable ? Math.round(group.cost) : null, costBasis: projectCostBasisLabel }
   })
   const projectAllocationRows = allocationRows.map((row) => {
-    const employee = scopedEmployees.get(keyOf(row.employeeId))
+    const employee = scopedEmployees.get(employeeModelKey(row))
     return {
       ...employee,
-      id: `${row.employeeId}-${row.projectId}`,
+      id: row.id || `${row.employeeId}-${row.projectId}`,
       employeeId: row.employeeId,
       name: employee.employeeName,
-      project: model.projects.get(keyOf(row.projectId))?.projectName || row.projectId,
+      project: model.projects.get(projectModelKey(row))?.projectName || row.projectId,
       allocation: Number(row.allocationPercentage),
       monthlySalary: projectCostAvailable ? projectGrossCost(row) : null,
       allocationWeightedCost: projectCostAvailable ? projectGrossCost(row) * Number(row.allocationPercentage || 0) / 100 : null,
@@ -321,32 +325,40 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   const allocationComplete = model.completeness.projectAllocation.has(reportingMonth)
   const employeeMasterAsOf = dateValue(model.employeeMasterAsOf)
   const employeeMasterComplete = model.completeness.employeeMaster && employeeMasterAsOf != null && employeeMasterAsOf + 86400000 - 1 >= periodEnd
-  const payrollByEmployee = new Map(payrollRows.map((row) => [keyOf(row.employeeId), row]))
-  const attendanceByEmployee = new Map(attendanceRows.map((row) => [keyOf(row.employeeId), row]))
-  const performanceByEmployee = new Map(performanceRows.map((row) => [keyOf(row.employeeId), row]))
+  const payrollByEmployee = new Map(payrollRows.map((row) => [employeeModelKey(row), row]))
+  const attendanceByEmployee = new Map(attendanceRows.map((row) => [employeeModelKey(row), row]))
+  const performanceByEmployee = new Map(performanceRows.map((row) => [employeeModelKey(row), row]))
   const allocationsByEmployee = new Map()
-  allocationRows.forEach((row) => allocationsByEmployee.set(keyOf(row.employeeId), [...(allocationsByEmployee.get(keyOf(row.employeeId)) || []), row]))
+  allocationRows.forEach((row) => allocationsByEmployee.set(employeeModelKey(row), [...(allocationsByEmployee.get(employeeModelKey(row)) || []), row]))
   const financialYearMonths = financialYearMonthsFor(reportingMonth, financialYearStartMonth)
   const financialYearStart = financialYearMonths[0]
   const annualLeaveByEmployee = new Map()
-  const leaveRowsForYear = model.leave.filter((row) => row.reportingMonth >= financialYearStart && row.reportingMonth <= reportingMonth && model.employees.has(keyOf(row.employeeId)))
+  const leaveRowsForYear = model.leave.filter((row) => row.reportingMonth >= financialYearStart && row.reportingMonth <= reportingMonth && model.employees.has(employeeModelKey(row)))
   const leaveDatasetPresent = model.leave.length > 0
   const leaveRecordsForYear = leaveDatasetPresent ? leaveRowsForYear : model.attendance.filter((row) => row.reportingMonth >= financialYearStart && row.reportingMonth <= reportingMonth && row.leaveTaken != null)
+  const attendanceLeaveCoverage = new Map()
+  if (!leaveDatasetPresent) {
+    for (const row of leaveRecordsForYear) {
+      if (!attendanceLeaveCoverage.has(row.reportingMonth)) attendanceLeaveCoverage.set(row.reportingMonth, new Set())
+      attendanceLeaveCoverage.get(row.reportingMonth).add(employeeModelKey(row))
+    }
+  }
   const attendanceLeaveYtdComplete = !leaveDatasetPresent && financialYearMonths.every((value) => {
     if (!model.completeness.attendance.has(value)) return false
     const parsed = parseMonth(value)
     const monthEnd = Date.UTC(parsed.year, parsed.month + 1, 0, 23, 59, 59, 999)
     const activeEmployees = [...model.employees.values()].map((employee) => employeeAt(model, employee, monthEnd))
       .filter((employee) => matches(employee, filters) && activeOn(employee, monthEnd))
-    return activeEmployees.every((employee) => model.attendance.some((row) => row.reportingMonth === value && keyOf(row.employeeId) === keyOf(employee.employeeId) && row.leaveTaken != null))
+    const coveredEmployees = attendanceLeaveCoverage.get(value)
+    return activeEmployees.every((employee) => coveredEmployees?.has(employeeModelKey(employee)))
   })
   leaveRecordsForYear.forEach((row) => {
-    const id = keyOf(row.employeeId)
+    const id = employeeModelKey(row)
     const value = leaveDatasetPresent ? row.daysAvailed : row.leaveTaken
     annualLeaveByEmployee.set(id, (annualLeaveByEmployee.get(id) || 0) + Number(value || 0))
   })
   const leaveRowsByEmployee = new Map()
-  leaveRowsForYear.forEach((row) => leaveRowsByEmployee.set(keyOf(row.employeeId), [...(leaveRowsByEmployee.get(keyOf(row.employeeId)) || []), row]))
+  leaveRowsForYear.forEach((row) => leaveRowsByEmployee.set(employeeModelKey(row), [...(leaveRowsByEmployee.get(employeeModelKey(row)) || []), row]))
   let leaveAvailableDays = 0
   let leaveAvailedDays = 0
   let missingLeaveEmployeeCount = 0
@@ -354,7 +366,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
   let leaveBalanceMismatchCount = 0
   const leaveDepartmentTotals = new Map()
   closing.forEach((employee) => {
-    const employeeId = keyOf(employee.employeeId)
+    const employeeId = employeeModelKey(employee)
     const rows = leaveRowsByEmployee.get(employeeId) || []
     if (!rows.length) {
       missingLeaveEmployeeCount += 1
@@ -403,32 +415,32 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     utilisation: group.availableDays > 0 && leaveComplete ? Math.round(group.availedDays / group.availableDays * 1000) / 10 : null,
   }))
   const snapshot = (employee) => {
-    const id = keyOf(employee.employeeId)
+    const id = employeeModelKey(employee)
     const salary = payrollByEmployee.get(id)
     const time = attendanceByEmployee.get(id)
     const review = performanceByEmployee.get(id)
     const assigned = allocationsByEmployee.get(id) || []
     const projectId = assigned[0]?.projectId
-    const projectName = model.projects.get(keyOf(projectId))?.projectName || projectId || 'Unallocated'
+    const projectName = model.projects.get(projectModelKey(assigned[0]))?.projectName || projectId || 'Unallocated'
     return {
       ...employee,
       id: employee.employeeId,
-      name: employee.employeeName,
-      monthlySalary: salary ? Number(salary.monthlyGrossSalary) : null,
-      monthlyBase: salary ? Number(salary.monthlyGrossSalary) : null,
-      annualCtc: salary?.annualCtc == null ? null : Number(salary.annualCtc),
+      name: employee.employeeName?.trim() || employee.employeeId || 'Unnamed employee',
+      monthlySalary: numberOrNull(salary?.monthlyGrossSalary),
+      monthlyBase: numberOrNull(salary?.monthlyGrossSalary),
+      annualCtc: numberOrNull(salary?.annualCtc),
       ...Object.fromEntries(PAYROLL_COMPONENTS.map(({ key }) => [key, numberOrNull(salary?.[key])])),
-      attendance: time?.attendancePercentage == null ? null : Number(time.attendancePercentage),
-      lopDays: time?.lopDays == null ? null : Number(time.lopDays),
-      leaveTaken: time?.leaveTaken == null ? null : Number(time.leaveTaken),
+      attendance: numberOrNull(time?.attendancePercentage),
+      lopDays: numberOrNull(time?.lopDays),
+      leaveTaken: numberOrNull(time?.leaveTaken),
       leaveTakenYtd: leaveDatasetPresent
         ? leaveComplete && annualLeaveByEmployee.has(id) ? annualLeaveByEmployee.get(id) : null
         : attendanceLeaveYtdComplete && annualLeaveByEmployee.has(id) ? annualLeaveByEmployee.get(id) : null,
-      performanceScore: review?.performanceScore == null ? null : Number(review.performanceScore),
-      incrementPercent: review?.incrementPercent == null ? null : Number(review.incrementPercent),
+      performanceScore: numberOrNull(review?.performanceScore),
+      incrementPercent: numberOrNull(review?.incrementPercent),
       project: projectName,
       allocation: assigned.reduce((total, row) => total + Number(row.allocationPercentage || 0), 0),
-      projectAssignments: assigned.map((row) => ({ ...row, project: model.projects.get(keyOf(row.projectId))?.projectName || row.projectId })),
+      projectAssignments: assigned.map((row) => ({ ...row, project: model.projects.get(projectModelKey(row))?.projectName || row.projectId })),
       tenureYears: Math.max(0, (periodEnd - (dateValue(employee.hireDate) || periodEnd)) / 31557600000),
     }
   }
@@ -449,7 +461,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     groups.set(employee.exitType, (groups.get(employee.exitType) || 0) + 1)
     return groups
   }, new Map())].map(([exitType, count]) => ({ exitType, count }))
-  const missingPayrollCount = closing.filter((employee) => !payrollByEmployee.has(keyOf(employee.employeeId))).length
+  const missingPayrollCount = closing.filter((employee) => !payrollByEmployee.has(employeeModelKey(employee))).length
   const missingAnnualCtcCount = payrollRows.filter((row) => row.annualCtc == null).length
   const payrollComponentTotals = PAYROLL_COMPONENTS.map(({ key, label }) => {
     const reportedCount = payrollRows.filter((row) => numberOrNull(row[key]) != null).length
@@ -464,9 +476,9 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     }
   })
   const payrollComponentFields = PAYROLL_COMPONENTS.filter(({ key }) => payrollRows.some((row) => numberOrNull(row[key]) != null)).map(({ key }) => key)
-  const missingAttendanceCount = closing.filter((employee) => !attendanceByEmployee.has(keyOf(employee.employeeId))).length
-  const missingLopCount = closing.filter((employee) => attendanceByEmployee.get(keyOf(employee.employeeId))?.lopDays == null).length
-  const missingLeaveCount = closing.filter((employee) => attendanceByEmployee.get(keyOf(employee.employeeId))?.leaveTaken == null).length
+  const missingAttendanceCount = closing.filter((employee) => !attendanceByEmployee.has(employeeModelKey(employee))).length
+  const missingLopCount = closing.filter((employee) => attendanceByEmployee.get(employeeModelKey(employee))?.lopDays == null).length
+  const missingLeaveCount = closing.filter((employee) => attendanceByEmployee.get(employeeModelKey(employee))?.leaveTaken == null).length
   const attendanceDayFields = ['calendarDays', 'workingDays', 'presentDays', 'weeklyOffDays', 'holidayDays', 'paidLeaveDays', 'unpaidLeaveDays', 'payableDays']
   const attendanceDayRows = attendanceRows.filter((row) => attendanceDayFields.every((field) => Number.isFinite(row[field])))
   const attendanceReconciledRows = attendanceDayRows.filter((row) => {
@@ -484,18 +496,18 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     reconciledRows: attendanceReconciledRows.length,
     mismatchRows: attendanceDayRows.length - attendanceReconciledRows.length,
   }
-  const missingPerformanceScoreCount = closing.filter((employee) => performanceByEmployee.get(keyOf(employee.employeeId))?.performanceScore == null).length
-  const missingIncrementCount = closing.filter((employee) => performanceByEmployee.get(keyOf(employee.employeeId))?.incrementPercent == null).length
+  const missingPerformanceScoreCount = closing.filter((employee) => performanceByEmployee.get(employeeModelKey(employee))?.performanceScore == null).length
+  const missingIncrementCount = closing.filter((employee) => performanceByEmployee.get(employeeModelKey(employee))?.incrementPercent == null).length
   const previous = new Date(Date.UTC(year, month - 1, 1))
   const previousMonth = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`
   const previousProjectAssignments = new Map()
-  model.allocations.filter((row) => row.reportingMonth === previousMonth).forEach((row) => previousProjectAssignments.set(keyOf(row.employeeId), [...(previousProjectAssignments.get(keyOf(row.employeeId)) || []), keyOf(row.projectId)]))
+  model.allocations.filter((row) => row.reportingMonth === previousMonth).forEach((row) => previousProjectAssignments.set(employeeModelKey(row), [...(previousProjectAssignments.get(employeeModelKey(row)) || []), projectModelKey(row)]))
   const projectTransfers = model.completeness.projectAllocation.has(previousMonth) && allocationComplete
     ? closing.filter((employee) => {
-      const id = keyOf(employee.employeeId)
-      if (!opening.some((item) => keyOf(item.employeeId) === id)) return false
+      const id = employeeModelKey(employee)
+      if (!opening.some((item) => employeeModelKey(item) === id)) return false
       const oldProjects = [...(previousProjectAssignments.get(id) || [])].sort().join('|')
-      const newProjects = [...(allocationsByEmployee.get(id) || []).map((row) => keyOf(row.projectId))].sort().join('|')
+      const newProjects = [...(allocationsByEmployee.get(id) || []).map((row) => projectModelKey(row))].sort().join('|')
       return oldProjects !== newProjects
     }).length
     : null
@@ -523,9 +535,9 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
     payroll: {
       gross: sum(payrollRows, (row) => row.monthlyGrossSalary),
       annualCtc: sum(payrollRows, (row) => row.annualCtc),
-      employeeCount: new Set(payrollRows.map((row) => keyOf(row.employeeId))).size,
+      employeeCount: new Set(payrollRows.map((row) => employeeModelKey(row))).size,
       byDepartment: [...payrollRows.reduce((groups, row) => {
-        const employee = scopedEmployees.get(keyOf(row.employeeId))
+        const employee = scopedEmployees.get(employeeModelKey(row))
         const department = employee?.department || 'Not specified'
         const group = groups.get(department) || { department, headcount: 0, payroll: 0, incrementCost: 0, increment: 0, attendance: 0 }
         group.headcount += 1
@@ -534,7 +546,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
         return groups
       }, new Map()).values()],
       byDepartmentAndCompany: [...payrollRows.reduce((groups, row) => {
-        const employee = scopedEmployees.get(keyOf(row.employeeId))
+        const employee = scopedEmployees.get(employeeModelKey(row))
         const department = employee?.department || 'Not specified'
         const company = employee?.company || 'Not specified'
         const key = `${company}\u0000${department}`
@@ -554,18 +566,19 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
       componentFields: payrollComponentFields,
     },
     attendance: {
-      averagePercentage: avg(attendanceRows, (row) => row.attendancePercentage),
+      averagePercentage: avg(measuredAttendance, (row) => row.attendancePercentage),
+      measuredEmployeeCount: measuredAttendance.length,
       lopDays: sum(attendanceRows, (row) => row.lopDays),
       leaveTaken: sum(attendanceRows, (row) => row.leaveTaken),
-      byDepartment: [...attendanceRows.reduce((groups, row) => {
-        const department = scopedEmployees.get(keyOf(row.employeeId))?.department || 'Not specified'
+      byDepartment: [...measuredAttendance.reduce((groups, row) => {
+        const department = scopedEmployees.get(employeeModelKey(row))?.department || 'Not specified'
         const group = groups.get(department) || { department, headcount: 0, payroll: 0, incrementCost: 0, increment: 0, attendanceTotal: 0 }
         group.headcount += 1
         group.attendanceTotal += Number(row.attendancePercentage || 0)
         groups.set(department, group)
         return groups
       }, new Map()).values()].map((group) => ({ ...group, attendance: Math.round(group.attendanceTotal / group.headcount * 10) / 10 })),
-      employeeCount: new Set(attendanceRows.map((row) => keyOf(row.employeeId))).size,
+      employeeCount: new Set(attendanceRows.map((row) => employeeModelKey(row))).size,
       missingEmployeeCount: missingAttendanceCount,
       missingLopCount,
       missingLeaveCount,
@@ -591,7 +604,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
       averageScore: avg(performanceRows, (row) => row.performanceScore),
       averageIncrementPercent: avg(performanceRows.filter((row) => row.incrementPercent != null), (row) => row.incrementPercent),
       highPerformers: performanceRows.filter((row) => Number(row.performanceScore) >= 4.2).length,
-      employeeCount: new Set(performanceRows.map((row) => keyOf(row.employeeId))).size,
+      employeeCount: new Set(performanceRows.map((row) => employeeModelKey(row))).size,
       missingScoreCount: missingPerformanceScoreCount,
       missingIncrementCount,
       complete: performanceComplete,
@@ -625,7 +638,7 @@ export function getImportedMonthMetrics(model, reportingMonth, filters = {}, asO
       allocationRows: projectAllocationRows,
       uniqueEmployees: allocatedEmployees.size,
       allocatedFte: sum(allocationRows, (row) => row.allocationPercentage) / 100,
-      unallocatedEmployees: allocationComplete && employeeMasterComplete ? closing.filter((employee) => !allocatedEmployees.has(keyOf(employee.employeeId))).length : null,
+      unallocatedEmployees: allocationComplete && employeeMasterComplete ? closing.filter((employee) => !allocatedEmployees.has(employeeModelKey(employee))).length : null,
       overallocatedEmployees,
       allocationCount: allocationRows.length,
       projectTransfers,

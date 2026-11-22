@@ -73,7 +73,7 @@ export function makeSheet(name, grid) {
   const populated = indexedRows.filter((row) => row.values.some((value) => String(value ?? '').trim() !== ''))
   if (!populated.length) return { name, headers: [], rows: [] }
   const headerRow = populated[0]
-  const headers = headerRow.values.map((value, index) => ({ index, label: String(value ?? '').trim() || `Column ${index + 1}` }))
+  const headers = Array.from(headerRow.values, (value, index) => ({ index, label: String(value ?? '').trim() || `Column ${index + 1}` }))
   const rows = populated.slice(1).map(({ rowNumber, values }) => ({ rowNumber, values: values.map(cellValue) }))
   return { name, headers, rows }
 }

@@ -8,11 +8,11 @@
     "build": "vite build",
     "lint": "oxlint",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.119.0",
+    "@supabase/supabase-js": "2.119.2",
     "autoprefixer": "^10.6.2",
     "exceljs": "^4.4.0",
     "jspdf": "^4.2.1",

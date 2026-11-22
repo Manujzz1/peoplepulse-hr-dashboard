@@ -27,24 +27,22 @@ beforeEach(() => {
 })
 
 describe('Login', () => {
-  it('authenticates with the provider session and keeps demo mode as an explicit separate choice', async () => {
+  it('authenticates with the provider session without offering unauthenticated demo access', async () => {
     const user = userEvent.setup()
     const onAuthenticated = vi.fn()
-    const onDemoLogin = vi.fn()
-    render(<Login onAuthenticated={onAuthenticated} onDemoLogin={onDemoLogin} />)
+    render(<Login onAuthenticated={onAuthenticated} />)
     await user.type(screen.getByLabelText('Email address'), 'analyst@example.test')
     await user.type(screen.getByLabelText('Password'), 'synthetic-password')
     await user.click(screen.getByRole('button', { name: 'Sign in securely' }))
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith({ user: { email: 'analyst@example.test' } }))
     expect(mockAuth.signInWithPassword).toHaveBeenCalledWith({ email: 'analyst@example.test', password: 'synthetic-password' })
-    await user.click(screen.getByRole('button', { name: /Continue to demo workspace/ }))
-    expect(onDemoLogin).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: /demo/i })).toBeNull()
   })
 
   it('shows provider errors and offers a non-enumerating reset confirmation', async () => {
     const user = userEvent.setup()
     mockAuth.signInWithPassword.mockResolvedValueOnce({ data: { session: null }, error: new Error('Invalid login credentials') })
-    render(<Login onAuthenticated={vi.fn()} onDemoLogin={vi.fn()} />)
+    render(<Login onAuthenticated={vi.fn()} />)
     await user.type(screen.getByLabelText('Email address'), 'unknown@example.test')
     await user.type(screen.getByLabelText('Password'), 'wrong-password')
     await user.click(screen.getByRole('button', { name: 'Sign in securely' }))

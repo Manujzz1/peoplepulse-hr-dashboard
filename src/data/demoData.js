@@ -1,4 +1,4 @@
-import { normalizeFinancialYearStartMonth } from './reportingCalendar'
+import { normalizeFinancialYearStartMonth } from './reportingCalendar.js'
 
 const departments = ['Engineering', 'Product', 'People', 'Finance', 'Sales', 'Operations']
 const companies = ['Northstar Labs', 'Northstar Services']

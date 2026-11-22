@@ -43,7 +43,7 @@ const navigation = [
   ] },
 ]
 
-export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, mobileOpen, onClose, availablePages }) {
+export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, mobileOpen, onClose, availablePages, workspaceName = 'Organisation workspace' }) {
   return (
     <>
       <button
@@ -61,8 +61,8 @@ export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, m
           <button className="mobile-close icon-button" onClick={onClose} aria-label="Close menu"><X size={18} /></button>
         </div>
         <div className="workspace-switch">
-          <div className="workspace-avatar">N</div>
-          <div className="workspace-copy"><strong>Northstar Labs</strong><span>People team</span></div>
+          <div className="workspace-avatar">{workspaceName.slice(0, 1).toUpperCase()}</div>
+          <div className="workspace-copy"><strong title={workspaceName}>{workspaceName}</strong><span>HR Analytics</span></div>
           <ChevronRight className="workspace-chevron" size={15} />
         </div>
         <nav className="side-nav" aria-label="Main navigation">
@@ -91,7 +91,7 @@ export default function Sidebar({ activePage, onNavigate, collapsed, onToggle, m
           })}
         </nav>
         <div className="sidebar-bottom">
-          <div className="data-note"><span className="note-icon"><WalletCards size={16} /></span><span><strong>Demo workspace</strong><small>Synthetic data only</small></span></div>
+          <div className="data-note"><span className="note-icon"><WalletCards size={16} /></span><span><strong>Organisation workspace</strong><small>Access is role scoped</small></span></div>
           <button className="collapse-button" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             {collapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
             <span>Collapse menu</span>

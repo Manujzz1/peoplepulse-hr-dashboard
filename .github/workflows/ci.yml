@@ -28,10 +28,18 @@ jobs:
         run: npm test
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
       - name: Start local Supabase
-        run: supabase start
-      - name: PostgreSQL migrations and RLS tests
+        run: |
+          if ! supabase start >/dev/null 2>&1; then
+            echo "::error::The isolated Supabase stack failed to start."
+            exit 1
+          fi
+      - name: PostgreSQL RLS and RPC tests
         run: supabase test db
+      - name: Synthetic Auth and import workflow
+        run: node scripts/test-auth-workflow.mjs
       - name: Stop local Supabase
         if: always()
         continue-on-error: true
@@ -39,16 +47,6 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Browser tests
-        run: |
-          npm run dev -- --host 127.0.0.1 > /tmp/peoplepulse-vite.log 2>&1 &
-          VITE_PID=$!
-          trap 'kill "$VITE_PID"' EXIT
-          VITE_READY=0
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:5173 > /dev/null; then VITE_READY=1; break; fi
-            sleep 1
-          done
-          if [ "$VITE_READY" -ne 1 ]; then cat /tmp/peoplepulse-vite.log; exit 1; fi
-          npm run test:e2e
+        run: npm run test:e2e
       - name: Production build
         run: npm run build

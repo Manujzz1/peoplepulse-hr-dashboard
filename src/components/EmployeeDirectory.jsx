@@ -23,6 +23,7 @@ export default function EmployeeDirectory({ employees, asOfDate, sourceLabel, ro
     const csv = serializeCsv(
       ['Employee ID', 'Employee Name', 'Company', 'Department', 'Designation', 'Grade', 'Location', 'Employment Type', 'Hire Date', 'Exit Date', 'Status'],
       filtered.map((employee) => [employee.id, employee.name, employee.company, employee.department, employee.designation, employee.grade, employee.location, employee.employmentType, employee.hireDate, employee.exitDate, employee.status]),
+      sourceLabel,
     )
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
@@ -57,7 +58,7 @@ export default function EmployeeDirectory({ employees, asOfDate, sourceLabel, ro
         </div>
         <div className="table-scroll"><table>
           <thead><tr><th>Employee ID</th><th>Employee</th><th>Company</th><th>Department</th><th>Designation</th><th>Grade</th><th>Location</th><th>Employment type</th><th>Hire date</th><th>Exit date</th><th>Status</th></tr></thead>
-          <tbody>{filtered.map((employee) => <tr key={employee.id}>
+          <tbody>{filtered.map((employee) => <tr key={employee.employeeRecordId || employee.id}>
             <td>{employee.id}</td>
             <td><button type="button" className="employee-profile-link" onClick={() => setSelected(employee)}>{employee.name}</button></td>
             <td>{display(employee.company)}</td><td>{display(employee.department)}</td><td>{display(employee.designation)}</td><td>{display(employee.grade)}</td><td>{display(employee.location)}</td>

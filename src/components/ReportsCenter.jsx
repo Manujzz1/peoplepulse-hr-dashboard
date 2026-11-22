@@ -3,8 +3,12 @@ import { Download, FileSpreadsheet, FileText, Printer } from 'lucide-react'
 import { Panel } from './DashboardParts'
 import { getPreviousDateValue, getPreviousMonthValue } from '../data/demoData'
 import { getPlanningReport } from '../data/planningModel'
+import { TEMPORARY_SAMPLE_DATA } from '../data/sampleData'
 import { createDashboardReport, reportColumnLabel, REPORT_COLUMNS, toCsv } from '../reports/reportData'
 import { getExecutivePdfHighlights, getExecutivePdfTableStartY, isConfidentialReport } from '../reports/reportPresentation'
+import { getAllowedReportKeys, loadCurrentAccessProfile } from '../auth/accessControl'
+import { supabase } from '../auth/supabaseClient'
+import { isCurrentExportScope, isExportAllowed, verifyLiveExportReadiness } from '../reports/exportSecurity'
 
 const reports = [
   { key: 'summary', label: 'Executive HR MIS', title: 'Executive HR MIS' },
@@ -51,8 +55,8 @@ const formatPdfValue = (row, key) => {
   return value.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 }
 
-function openPrintReport(title, rows, month, source, reportColumns) {
-  const printWindow = window.open('', '_blank')
+function openPrintReport(title, rows, month, source, reportColumns, targetWindow = null) {
+  const printWindow = targetWindow || window.open('', '_blank')
   if (!printWindow) throw new Error('Allow the report window to open, then try Print / Save as PDF again.')
   const columns = reportColumns
   const table = `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(reportColumnLabel(column))}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column])}</td>`).join('')}</tr>`).join('')}</tbody></table>`
@@ -63,7 +67,10 @@ function openPrintReport(title, rows, month, source, reportColumns) {
 function sheetFor(workbook, name, rows, columns = Object.keys(rows[0] || {})) {
   const sheet = workbook.addWorksheet(name)
   sheet.addRow(columns.map(reportColumnLabel))
-  rows.forEach((row) => sheet.addRow(columns.map((column) => row[column] ?? null)))
+  rows.forEach((row) => sheet.addRow(columns.map((column) => {
+    const value = row[column] ?? null
+    return typeof value === 'string' && /^[\t\r\n ]*[=+\-@]/.test(value) ? `'${value}` : value
+  })))
   sheet.views = [{ state: 'frozen', ySplit: 1 }]
   sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rows.length + 1), column: columns.length } }
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -80,13 +87,13 @@ function sheetFor(workbook, name, rows, columns = Object.keys(rows[0] || {})) {
   return sheet
 }
 
-export default function ReportsCenter({ employees, departments, trends, selectedMonth, selectedDate, filters, getPeriodMetrics, sourceLabel, projectAssignments, importedModel, dataSource, incrementBandLimits, allowedReports = reports.map((report) => report.key) }) {
+export default function ReportsCenter({ employees, departments, trends, selectedMonth, selectedDate, filters, getPeriodMetrics, sourceLabel, projectAssignments, importedModel, dataSource, incrementBandLimits, authStatus = 'demo', allowedReports = reports.map((report) => report.key), liveLoadedAt, refreshLiveWorkspace, liveUserId, liveScopeKey }) {
   const [selectedReport, setSelectedReport] = useState('summary')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const current = getPeriodMetrics(selectedMonth, filters, selectedDate)
   const previous = getPeriodMetrics(getPreviousMonthValue(selectedMonth), filters, getPreviousDateValue(selectedDate))
-  const planning = useMemo(() => dataSource === 'imported' ? {
+  const planning = useMemo(() => (dataSource === 'imported' || dataSource === 'live') && importedModel ? {
     recruitment: getPlanningReport(importedModel, 'recruitment', selectedMonth, selectedDate, filters),
     contracts: getPlanningReport(importedModel, 'contracts', selectedMonth, selectedDate, filters),
     budget: getPlanningReport(importedModel, 'budget', selectedMonth, selectedDate, filters, { canReadIncrements: allowedReports.includes('increments') }),
@@ -106,14 +113,47 @@ export default function ReportsCenter({ employees, departments, trends, selected
     incrementBandLimits,
   }), [selectedMonth, selectedDate, employees, departments, trends, current, previous, sourceLabel, projectAssignments, planning, filters, incrementBandLimits])
   const visibleReports = reports.filter((report) => allowedReports.includes(report.key))
-  const activeReport = visibleReports.find((report) => report.key === selectedReport) || visibleReports[0] || reports[0]
-  const reportKey = activeReport.key
+  const activeReport = visibleReports.find((report) => report.key === selectedReport) || visibleReports[0]
+  const reportKey = activeReport?.key
   const rows = reportData[reportKey] || []
   const columns = REPORT_COLUMNS[reportKey]
   const previewRows = rows.slice(0, 12)
 
-  const exportCsv = () => {
-    saveBlob(new Blob([toCsv(rows, columns)], { type: 'text/csv;charset=utf-8' }), filename(activeReport.title, selectedMonth))
+  const getCurrentAllowedReports = async () => {
+    if (authStatus !== 'authenticated' && dataSource !== 'live') return allowedReports
+    if (!supabase) throw new Error('The authenticated database connection is unavailable.')
+    const profile = await loadCurrentAccessProfile(supabase)
+    if (dataSource === 'live' && !isCurrentExportScope(profile, liveUserId, liveScopeKey)) return []
+    return getAllowedReportKeys(profile).filter((key) => allowedReports.includes(key))
+  }
+
+  const verifyReportExport = async (reportKey) => {
+    try {
+      const currentAllowed = await getCurrentAllowedReports()
+      if (!isExportAllowed(reportKey, currentAllowed)) {
+        setError('Your current account permissions do not allow exporting this report.')
+        setStatus('')
+        return false
+      }
+      if (dataSource === 'live') {
+        const ready = await verifyLiveExportReadiness({ loadedAt: liveLoadedAt, refresh: refreshLiveWorkspace })
+        if (!ready) {
+          setStatus('Live data was refreshed. Review the updated report and export again.')
+          setError('')
+          return false
+        }
+      }
+      return true
+    } catch {
+      setError('Your current access could not be verified. Sign in again before exporting.')
+    }
+    setStatus('')
+    return false
+  }
+
+  const exportCsv = async () => {
+    if (!await verifyReportExport(reportKey)) return
+    saveBlob(new Blob([toCsv(rows, columns, sourceLabel)], { type: 'text/csv;charset=utf-8' }), filename(activeReport.title, selectedMonth))
     setStatus(`${activeReport.label} CSV downloaded with the current filters.`)
     setError('')
   }
@@ -122,10 +162,23 @@ export default function ReportsCenter({ employees, departments, trends, selected
     setStatus('Preparing the Excel report locally…')
     setError('')
     try {
+      const currentAllowed = await getCurrentAllowedReports()
+      if (!currentAllowed.length) {
+        setError('Your current account permissions do not allow exporting these reports. Reload the workspace to refresh your access.')
+        setStatus('')
+        return
+      }
+      if (dataSource === 'live' && !await verifyLiveExportReadiness({ loadedAt: liveLoadedAt, refresh: refreshLiveWorkspace })) {
+        setStatus('Live data was refreshed. Review the updated report and export again.')
+        return
+      }
       const { default: ExcelJS } = await import('exceljs')
       const workbook = new ExcelJS.Workbook()
-      workbook.creator = 'PeoplePulse synthetic HR MIS'
+      workbook.creator = 'PeoplePulse HR MIS'
       workbook.created = new Date()
+      if (sourceLabel === TEMPORARY_SAMPLE_DATA) {
+        workbook.addWorksheet(TEMPORARY_SAMPLE_DATA).addRow([TEMPORARY_SAMPLE_DATA, 'Fictional ADTL records'])
+      }
       const worksheets = [
         ['Executive Summary', 'summary'], ['Monthly Headcount', 'headcount'], ['Joiners and Exits', 'movements'],
         ['Attrition and Trends', 'trends'], ['Payroll Summary', 'payroll'], ['Department Payroll', 'departments'],
@@ -133,7 +186,8 @@ export default function ReportsCenter({ employees, departments, trends, selected
         ['Performance', 'performance'], ['Increment Analysis', 'increments'], ['Project Allocation', 'projectAllocation'],
         ['Project Cost', 'projectCost'], ['Recruitment', 'recruitment'], ['Contract Manpower', 'contracts'],
         ['HR Budget Actual', 'budget'], ['Consolidated MIS', 'consolidated'],
-      ].filter(([, key]) => allowedReports.includes(key))
+      ].filter(([, key]) => currentAllowed.includes(key))
+      if (!worksheets.length) throw new Error('No reports are currently allowed for export.')
       worksheets.forEach(([name, key]) => {
         const rows = key === 'summary'
           ? [...reportData[key], { metric: 'Generated at', value: localDateTime(), unit: '' }]
@@ -141,6 +195,14 @@ export default function ReportsCenter({ employees, departments, trends, selected
         sheetFor(workbook, name, rows, REPORT_COLUMNS[key])
       })
       const buffer = await workbook.xlsx.writeBuffer()
+      if (dataSource === 'live') {
+        const stillAllowed = await getCurrentAllowedReports()
+        if (!worksheets.every(([, key]) => stillAllowed.includes(key))) {
+          setError('Your access changed while the export was being prepared. Reload the workspace.')
+          setStatus('')
+          return
+        }
+      }
       saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `peoplepulse-hr-mis-${selectedMonth}.xlsx`)
       setStatus('Excel HR MIS downloaded with the current filter selection and all available report worksheets.')
     } catch {
@@ -150,6 +212,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
   }
 
   const exportPdf = async () => {
+    if (!await verifyReportExport(reportKey)) return
     setStatus('Preparing the PDF report locally...')
     setError('')
     try {
@@ -259,6 +322,7 @@ export default function ReportsCenter({ employees, departments, trends, selected
           pdf.text(`Page ${pdf.internal.getNumberOfPages()}`, pageWidth - 40, pageHeight - 18, { align: 'right' })
         },
       })
+      if (dataSource === 'live' && !await verifyReportExport(reportKey)) return
       pdf.save(filename(activeReport.title, selectedMonth).replace(/\.csv$/, '.pdf'))
       setStatus(`${activeReport.label} PDF downloaded with the current filters.`)
     } catch (pdfError) {
@@ -267,9 +331,16 @@ export default function ReportsCenter({ employees, departments, trends, selected
     }
   }
 
-  const print = () => {
+  const print = async () => {
     try {
-      openPrintReport(activeReport.title, rows, selectedMonth, sourceLabel, columns)
+      // Open synchronously while the click still carries browser user activation.
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) throw new Error('Allow the report window to open, then try Print / Save as PDF again.')
+      if (!await verifyReportExport(reportKey)) {
+        printWindow.close()
+        return
+      }
+      openPrintReport(activeReport.title, rows, selectedMonth, sourceLabel, columns, printWindow)
       setStatus('Print view opened. Choose “Save as PDF” in the print dialog to create a PDF.')
       setError('')
     } catch (printError) {
@@ -277,6 +348,8 @@ export default function ReportsCenter({ employees, departments, trends, selected
       setStatus('')
     }
   }
+
+  if (!activeReport) return <Panel title="Management Reports Centre"><p>No reports are available for your current access.</p></Panel>
 
   return (
     <div className="reports-center">
