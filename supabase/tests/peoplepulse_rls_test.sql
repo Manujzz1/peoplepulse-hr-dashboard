@@ -59,12 +59,13 @@ select throws_ok(
   '23514', null,
   'An employee cannot be their own reporting manager in effective history'
 );
-set local role authenticated;
+-- Exercise the staging RLS policies with the database-only executor fixture.
+set local role peoplepulse_import_executor;
 set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000001';
 select lives_ok(
   $$insert into public.import_batches (company_id, dataset_type)
     values ('83000000-0000-4000-8000-000000000001', 'employee_history')$$,
-  'HR Admin can create an Employee History import batch'
+  'Executor can create an Employee History batch using uploader claims'
 );
 select lives_ok(
   $$update public.import_batches set status = 'Uploaded'
@@ -138,16 +139,19 @@ select results_eq(
   array[175000::numeric],
   'HR Admin can read payroll in their company'
 );
-select is_empty(
+select throws_ok(
   $$update public.employees set employee_name = 'Synthetic A Employee 1 Updated' where employee_code = 'SYN-A1' returning employee_code$$,
+  '42501', null,
   'HR Admin cannot directly edit employee data outside an uploaded batch'
 );
-select is_empty(
+select throws_ok(
   $$update public.employees set employee_name = 'Cross Company Change' where employee_code = 'SYN-B1' returning employee_code$$,
+  '42501', null,
   'HR Admin cannot update another company employee'
 );
-select is_empty(
+select throws_ok(
   $$delete from public.employees where employee_code = 'SYN-B1' returning employee_code$$,
+  '42501', null,
   'HR Admin cannot delete another company employee'
 );
 
@@ -191,10 +195,11 @@ select throws_ok(
   'HR Admin cannot grant a Super Admin role'
 );
 
+set local role peoplepulse_import_executor;
 select lives_ok(
   $$insert into public.import_batches (company_id, dataset_type, reporting_month)
     values ('83000000-0000-4000-8000-000000000001', 'payroll', '2025-05-01')$$,
-  'HR Admin can create a Draft import batch'
+  'Executor can open a Draft import batch using the HR Admin claims'
 );
 select results_eq(
   $$update public.import_batches set status = 'Uploaded'
@@ -226,6 +231,7 @@ select throws_ok(
   '23514', 'Import batch identity fields cannot be changed.',
   'Import department scope is immutable after batch creation'
 );
+set local role authenticated;
 select throws_ok(
   $$update public.import_batches set status = 'Rejected'
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'payroll' and reporting_month = '2025-05-01'$$,
@@ -236,15 +242,17 @@ set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000005';
 select throws_ok(
   $$update public.import_batches set status = 'Validated'
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'payroll' and reporting_month = '2025-05-01'$$,
-  '42501', 'Only the uploader can validate the uploaded batch.',
+  '42501', null,
   'A different HR Admin cannot validate the uploader’s batch'
 );
 set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000001';
+set local role peoplepulse_import_executor;
 select lives_ok(
   $$update public.import_batches set total_rows = 2, accepted_rows = 1, rejected_rows = 1, status = 'Validated'
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'payroll' and reporting_month = '2025-05-01'$$,
   'Uploader can validate and reconcile row counts'
 );
+set local role authenticated;
 select throws_ok(
   $$update public.import_batches set status = 'Reviewed'
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'payroll' and reporting_month = '2025-05-01'$$,
@@ -290,16 +298,17 @@ select results_eq(
   array[1::bigint],
   'Published payroll rows become visible to authorised dashboard readers'
 );
-select is_empty(
+select throws_ok(
   $$update public.payroll_records set monthly_gross = 1 where reporting_month = '2025-05-01' returning id$$,
+  '42501', null,
   'Published payroll rows cannot be edited through the authenticated API'
 );
 set local request.jwt.claim.sub = '81000000-0000-4000-8000-000000000007';
 select throws_ok(
   $$update public.import_batches set metadata = '{"edited":true}'::jsonb
     where company_id = '83000000-0000-4000-8000-000000000001' and dataset_type = 'payroll' and reporting_month = '2025-05-01'$$,
-  '23514', null,
-  'Published imports are immutable'
+  '42501', null,
+  'Authenticated publishers cannot edit published import metadata'
 );
 select results_eq(
   $$select count(*)::bigint from public.audit_logs
@@ -316,10 +325,11 @@ select throws_ok(
   '42501', null,
   'Employee master writes without an import batch are rejected'
 );
+set local role peoplepulse_import_executor;
 select lives_ok(
   $$insert into public.import_batches (company_id, dataset_type)
     values ('83000000-0000-4000-8000-000000000001', 'employee_master')$$,
-  'HR Admin can create an Employee Master batch'
+  'Executor can create an Employee Master batch using uploader claims'
 );
 select lives_ok(
   $$update public.import_batches set status = 'Uploaded'
@@ -341,7 +351,7 @@ select results_eq(
 select lives_ok(
   $$insert into public.import_batches (company_id, dataset_type, reporting_month)
     values ('83000000-0000-4000-8000-000000000001', 'project_allocation', '2025-05-01')$$,
-  'HR Admin can create a project allocation batch'
+  'Executor can create a project allocation batch using uploader claims'
 );
 select lives_ok(
   $$update public.import_batches set status = 'Uploaded'

@@ -32,6 +32,8 @@ jobs:
         run: supabase start
       - name: PostgreSQL RLS and RPC tests
         run: supabase test db
+      - name: Synthetic Auth and import workflow
+        run: node scripts/test-auth-workflow.mjs
       - name: Stop local Supabase
         if: always()
         continue-on-error: true

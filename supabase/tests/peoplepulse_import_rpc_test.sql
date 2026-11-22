@@ -1,7 +1,7 @@
 -- Run only on a disposable local database with the project migrations applied.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(19);
+select plan(28);
 
 insert into auth.users (id, email) values
   ('91000000-0000-4000-8000-000000000001', 'rpc-uploader@example.test'),
@@ -40,6 +40,29 @@ create function pg_temp.submit(
 $$;
 
 select ok(not has_function_privilege('anon', 'public.submit_peoplepulse_import_batch(uuid,uuid,text,date,jsonb,jsonb)', 'EXECUTE'), 'Anon has no execute grant');
+select ok(not pg_has_role('authenticated', 'peoplepulse_import_executor', 'MEMBER'), 'Authenticated sessions cannot assume the executor role');
+select ok((select not rolcanlogin and not rolbypassrls from pg_roles where rolname = 'peoplepulse_import_executor'), 'Executor has no login or RLS bypass');
+select ok(
+  not exists (
+    select 1 from pg_class
+    where relnamespace = 'public'::regnamespace and relkind = 'r'
+      and (has_table_privilege('authenticated', oid, 'truncate')
+        or has_table_privilege('authenticated', oid, 'trigger')
+        or has_table_privilege('authenticated', oid, 'references'))
+  ),
+  'Authenticated users have no table privileges that bypass or alter row-level policy enforcement'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.role_permissions', 'insert,update,delete')
+  and not has_table_privilege('authenticated', 'public.app_roles', 'insert,update,delete'),
+  'Authenticated users have read-only access to role definitions'
+);
+
+-- Model a row already approved by the pre-cutover workflow.
+alter table public.import_batches disable trigger user;
+insert into public.import_batches (id, company_id, dataset_type, status)
+values ('94000000-0000-4000-8000-000000000009', '93000000-0000-4000-8000-000000000001', 'department_master', 'Approved');
+alter table public.import_batches enable trigger user;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000001","exp":1}';
@@ -62,6 +85,34 @@ select throws_ok(
   '23503', null, 'Missing employee reference is rejected'
 );
 select is(pg_temp.submit(1, '[{"department_key":"RPC-OK","department_name":"Synthetic Department"}]') ->> 'status', 'Validated', 'Valid import stops at Validated');
+select ok(
+  (select atomic_submission from public.import_batches where id = '94000000-0000-4000-8000-000000000001'),
+  'A successful RPC batch records trusted submission provenance'
+);
+select throws_ok(
+  $$insert into public.import_batches (company_id, dataset_type) values ('93000000-0000-4000-8000-000000000001', 'department_master')$$,
+  '42501', null, 'Authenticated writer cannot directly create an import batch'
+);
+select throws_ok(
+  $$insert into public.departments (company_id, department_key, department_name, source_batch_id)
+    values ('93000000-0000-4000-8000-000000000001','RPC-DIRECT','Synthetic Direct','94000000-0000-4000-8000-000000000001')$$,
+  '42501', null, 'Authenticated writer cannot directly add a dataset row'
+);
+select throws_ok(
+  $$update public.import_batches set atomic_submission = true where id = '94000000-0000-4000-8000-000000000009'$$,
+  '42501', null, 'Authenticated roles cannot set submission provenance'
+);
+set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000002","exp":4102444800}';
+reset role;
+insert into public.user_roles (user_id, organization_id, role_key) values
+  ('91000000-0000-4000-8000-000000000002', '92000000-0000-4000-8000-000000000001', 'super_admin');
+set local role authenticated;
+select throws_ok(
+  $$update public.import_batches set status = 'Published' where id = '94000000-0000-4000-8000-000000000009'$$,
+  '42501', 'Legacy batches require administrator reconciliation and cannot advance.',
+  'Even a permitted publisher cannot publish a pre-cutover batch'
+);
+set local request.jwt.claims = '{"sub":"91000000-0000-4000-8000-000000000001","exp":4102444800}';
 select is(pg_temp.submit(1, '[{"department_key":"RPC-OK","department_name":"Synthetic Department"}]') ->> 'reused', 'true', 'Same key and payload reuse the batch');
 select throws_ok($$select pg_temp.submit(1, '[{"department_key":"RPC-OK","department_name":"Changed"}]')$$, '23505', null, 'Reused client hash cannot disguise changed mapped rows');
 select is((select count(*) from public.departments where department_key = 'RPC-OK'), 0::bigint, 'Validated import is hidden from dashboard reads');

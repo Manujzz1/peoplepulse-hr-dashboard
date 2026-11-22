@@ -30,6 +30,8 @@ import {
 } from './data/demoData'
 import './App.css'
 
+const liveImportsEnabled = import.meta.env.VITE_ENABLE_LIVE_IMPORTS === 'true'
+
 const pageInfo = {
   executive: ['Executive dashboard', 'A clear view of your people, costs, and momentum.'],
   workforce: ['Workforce analytics', 'Understand how your workforce is changing across teams and locations.'],
@@ -380,6 +382,7 @@ function App() {
     setOrganization('All organizations')
   }
   const submitDatabaseImport = async ({ category, stage, companyId }) => {
+    if (!liveImportsEnabled) throw new Error('Live import submissions are disabled in this deployment.')
     if (!supabase || dataSource !== 'live' || !authenticatedAccessReady || !hasPermission(accessProfile, 'imports.write') || !hasPermission(accessProfile, 'imports.read')) {
       throw new Error('A verified live session with import read and write permissions is required.')
     }
@@ -388,6 +391,7 @@ function App() {
     return result
   }
   const transitionDatabaseBatch = async (batch, status) => {
+    if (!liveImportsEnabled) throw new Error('Live import workflow actions are disabled in this deployment.')
     if (!supabase || dataSource !== 'live' || !authenticatedAccessReady) throw new Error('A verified live session is required.')
     const neededPermission = { Reviewed: 'imports.review', Approved: 'imports.approve', Published: 'imports.publish', Rejected: 'imports.review' }[status]
     if (!neededPermission || !hasPermission(accessProfile, neededPermission)) throw new Error('Your current role cannot perform that import approval step.')
@@ -526,7 +530,7 @@ function App() {
             <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
             <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>
           </div>
-          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} databaseReady={dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} /></Suspense> : isModelSource && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
+          {activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} /></Suspense> : isModelSource && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
             <section className="source-mode-empty">
               <div className="source-mode-icon"><Database size={22} /></div>
               <p className="eyebrow">IMPORTED DATA Â· {reportingMonth}</p>

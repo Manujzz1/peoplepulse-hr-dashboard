@@ -11,3 +11,5 @@ The administrative draft depends on migrations 202611160001 through 202611160006
 - The 73-test RLS suite includes reviewer, approval and publication permission and actor checks. The 19-test RPC suite adds inputs, tenant checks, retry behavior, duplicates, unapproved visibility and transactional rollback. Both passed in disposable embedded PostgreSQL 18.7 with Auth fixtures. Full isolated Supabase execution is pending. JavaScript tests mock the transport and verify client behavior only.
 
 See [deployment readiness](deployment-readiness.md) for the local install commands and separate production approval gates.
+
+The cutover candidate `20261122010333` removes direct authenticated staging writes, enforces atomic provenance before review or publication, and preserves RLS through a private no-login executor called by the public invoker wrapper. The legacy direct staging behavior described above still applies to production until the cutover is separately approved and applied. See the [production catalog comparison](final-security-verification.md) for the observed grants and release gates.
