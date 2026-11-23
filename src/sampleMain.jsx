@@ -5,6 +5,7 @@ import './index.css'
 import './App.css'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import ExecutiveSamplePreview from './components/ExecutiveSamplePreview'
+import BrowserImportPreview from './components/BrowserImportPreview'
 
 import Login from './components/Login'
 import { supabase } from './auth/supabaseClient'
@@ -15,6 +16,7 @@ const sections = [
   ['sample-workforce', 'Workforce analytics', BarChart3],
   ['sample-checklist', 'HR Checklist', ClipboardList],
   ['sample-insights', 'Management Insights', Lightbulb],
+  ['browser-import-preview', 'Upload preview', ClipboardList],
 ]
 
 export function SampleSite() {
@@ -65,7 +67,7 @@ export function SampleSite() {
         <button className="sample-logout" type="button" onClick={signOut}><LogOut size={16} aria-hidden="true" /> Sign out</button>
       </header>
       {signOutError && <p role="alert">{signOutError}</p>}
-      <div className="page-content"><ExecutiveSamplePreview /></div>
+      <div className="page-content"><ExecutiveSamplePreview /><BrowserImportPreview /></div>
     </main>
   </div>
 }
