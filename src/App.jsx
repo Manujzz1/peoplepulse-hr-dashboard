@@ -202,6 +202,7 @@ function App() {
   }), [permissionPages, accessProfile, allowedReportKeys])
   const activeView = availablePages.includes(activePage) ? activePage : availablePages[0] || 'executive'
   const [executiveSampleSelected, setExecutiveSampleSelected] = useState(true)
+  const [filtersExpanded, setFiltersExpanded] = useState(true)
   const showExecutiveSample = activeView === 'executive' && ExecutiveSamplePreview && executiveSampleSelected
   const pageDepartmentScope = useMemo(() => authenticatedAccessReady
     ? getDepartmentScope(accessProfile, permissionsForPage(activeView, allowedReportKeys))
@@ -540,8 +541,15 @@ function App() {
               {dataSource !== 'live' && <button type="button" className="stage-button" onClick={() => setActivePage('dataImport')}>Open Data Import</button>}
             </section>
           ) : <>
-          <div className="filter-bar">
-            <div className="filter-label"><span>Filters</span><i /></div>
+          <section className="workspace-filters" aria-label="Reporting filters">
+            <div className="workspace-filter-heading">
+              <button type="button" className="workspace-filter-toggle" aria-expanded={filtersExpanded} aria-controls="workspace-filter-controls" onClick={() => setFiltersExpanded(!filtersExpanded)}>
+                <ChevronDown size={15} aria-hidden="true" /> {filtersExpanded ? 'Hide filters' : 'Show filters'}
+              </button>
+              {!filtersExpanded && <span className="workspace-filter-period"><time dateTime={reportingDate}>{reportingDate}</time>{effectiveCompany !== 'All companies' && <> · {effectiveCompany}</>}</span>}
+              <span className="filter-result"><b>{activeView === 'dataQuality' ? Object.keys(stagedImports).length : planningPage ? planningRecordCount : employeeMasterPage ? employeeDirectoryRows.length : employees.length}</b> {activeView === 'dataQuality' ? 'staged categories' : planningPage ? 'planning records' : 'employees'}</span>
+            </div>
+          <div id="workspace-filter-controls" className="filter-bar" hidden={!filtersExpanded}>
             <FilterSelect label="Month" icon={CalendarDays} value={reportingMonth} options={reportingMonths} onChange={updateMonth} />
             <FilterSelect label="Financial year starts" icon={CalendarDays} value={financialYearStartMonth} options={financialYearOptions} onChange={(value) => setFinancialYearStartMonth(Number(value))} />
             <DateFilter value={reportingDate} onChange={updateDate} min={dateMin} max={dateMax} />
@@ -552,9 +560,8 @@ function App() {
             <FilterSelect label="Location" icon={MapPin} value={location} options={['All locations', ...locationOptions]} onChange={setLocation} />
             <FilterSelect label="Employment type" value={employmentType} options={['All employment types', ...employmentOptions]} onChange={setEmploymentType} />
             <button type="button" className="filter-reset" onClick={resetFilters}>Reset filters</button>
-            <div className="filter-spacer" />
-            <span className="filter-result"><b>{activeView === 'dataQuality' ? Object.keys(stagedImports).length : planningPage ? planningRecordCount : employeeMasterPage ? employeeDirectoryRows.length : employees.length}</b> {activeView === 'dataQuality' ? 'staged categories' : planningPage ? 'planning records' : 'employees'}</span>
           </div>
+          </section>
           {dataSource === 'live' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>{hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS-backed data'}</b>{hasSampleData ? ' ? fictional ADTL records. Do not use these figures as real HR or payroll data.' : ' ? records are scoped to the authenticated session.'}</span></div> : employeeMasterPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local Employee Master preview</b> — not published to the database.</span></div> : planningPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local planning preview</b> — not published to the database.</span></div> : activeView === 'dataQuality' ? null : <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Imported reporting period verified</b> — only staged imported sources are shown. Trend points for incomplete historical periods are omitted. {!importedModel.completeness.employeeHistory ? 'Past-period department, location, and employment filters use roster attributes until a complete Employee History is staged.' : 'Effective-dated Employee History is applied to past-period workforce attributes.'}{importReadiness.metrics.payroll.missingAnnualCtcCount > 0 ? ' Annual CTC is shown as unavailable where it was not supplied.' : ''}</span></div>}
           {employees.length === 0 && !employeeMasterPage && activeView !== 'dataQuality' && <div className="empty-filter-state"><Search size={18} /><div><strong>No employees in this selection</strong><p>{dataSource === 'live' ? 'No published employee rows are visible for this organization, company, and reporting period.' : 'No local preview rows match the selected filters.'}</p></div></div>}
           <AppErrorBoundary key={activeView} moduleTitle={title}>

@@ -152,6 +152,13 @@ test('shows scoped Executive analytics and explains unavailable sources at all v
   await page.setViewportSize({ width: 1366, height: 768 })
   await page.getByLabel('Department', { exact: true }).selectOption('Engineering')
   await expect(active.locator('strong')).toHaveText(/^[1-9]\d?$/)
+  const selectedCount = await active.locator('strong').textContent()
+  await page.getByRole('button', { name: 'Hide filters', exact: true }).click()
+  await expect(page.getByLabel('Department', { exact: true })).toBeHidden()
+  await expect(page.locator('.workspace-filter-period')).toContainText('2025-12')
+  await expect(active.locator('strong')).toHaveText(selectedCount)
+  await page.getByRole('button', { name: 'Show filters', exact: true }).click()
+  await expect(page.getByLabel('Department', { exact: true })).toHaveValue('Engineering')
   await expect(page.locator('.data-badge')).toHaveText('Temporary Sample Data')
 })
 
