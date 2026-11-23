@@ -474,6 +474,7 @@ function App() {
   if (authStatus === 'anonymous' || authStatus === 'recovery') {
     return <Login
       recoveryMode={authStatus === 'recovery'}
+      passwordResetUrl={import.meta.env.VITE_USE_ORIGINAL_PASSWORD_RESET === 'true' ? 'https://peoplepulse-hr-dashboard.vercel.app' : undefined}
       onAuthenticated={(session) => { setDataSource('live'); setAuthSession(session); setAuthStatus('authenticated') }}
       onRecoveryComplete={() => setAuthStatus('authenticated')}
     />

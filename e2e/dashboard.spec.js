@@ -209,6 +209,7 @@ test('CSV validation and in-memory staging complete without a network upload', a
   await enterWorkspace(page)
   await page.getByRole('button', { name: 'Data Import' }).click()
   await expect(page.getByRole('heading', { name: 'Data Import Centre' })).toBeVisible()
+  await expect(page.getByText('Live imports are disabled in this deployment.', { exact: true })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles({
     name: 'synthetic-employees.csv',
     mimeType: 'text/csv',
