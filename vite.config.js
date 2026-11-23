@@ -19,8 +19,7 @@ export default defineConfig({
       apply: 'build',
       configResolved({ env }) {
         const { provided, configured } = readSupabaseConfig(env)
-        if (standaloneSample) return
-        if (!configured && (provided || process.env.VERCEL_ENV === 'production')) {
+        if (!configured && (standaloneSample || provided || process.env.VERCEL_ENV === 'production')) {
           throw new Error('Set VITE_SUPABASE_URL and a public VITE_SUPABASE_PUBLISHABLE_KEY before building PeoplePulse.')
         }
       },

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Activity, ArrowRight, KeyRound, LockKeyhole, Mail } from 'lucide-react'
 import { supabase, supabaseConfigured, supabaseConfigurationError } from '../auth/supabaseClient'
 
-export default function Login({ onAuthenticated, recoveryMode = false, onRecoveryComplete }) {
+export default function Login({ onAuthenticated, recoveryMode = false, onRecoveryComplete, passwordResetUrl }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -73,7 +73,9 @@ export default function Login({ onAuthenticated, recoveryMode = false, onRecover
             {error && <p className="login-error" role="alert">{error}</p>}
             {message && <p className="login-success" role="status">{message}</p>}
             <button className="login-submit" type="submit" disabled={loading}>{loading ? 'Please wait…' : recoveryMode ? 'Update password' : 'Sign in securely'} <ArrowRight size={16} /></button>
-            {!recoveryMode && <button className="login-secondary" type="button" disabled={loading} onClick={requestReset}><KeyRound size={14} /> Send password reset email</button>}
+            {!recoveryMode && (passwordResetUrl
+              ? <a className="login-secondary" href={passwordResetUrl}><KeyRound size={14} /> Reset password on original PeoplePulse</a>
+              : <button className="login-secondary" type="button" disabled={loading} onClick={requestReset}><KeyRound size={14} /> Send password reset email</button>)}
           </form>}
           {error && !supabaseConfigured && <p className="login-error" role="alert">{error}</p>}
           {message && !supabaseConfigured && <p className="login-success" role="status">{message}</p>}

@@ -1,4 +1,4 @@
-﻿import { StrictMode, useState } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BarChart3, ClipboardList, LayoutDashboard, Lightbulb, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import './index.css'
@@ -6,7 +6,9 @@ import './App.css'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import ExecutiveSamplePreview from './components/ExecutiveSamplePreview'
 
-const sessionKey = 'peoplepulse-executive-sample-session'
+import Login from './components/Login'
+import { supabase } from './auth/supabaseClient'
+
 const originalSite = 'https://peoplepulse-hr-dashboard.vercel.app'
 const sections = [
   ['executive-sample-preview', 'Executive dashboard', LayoutDashboard],
@@ -16,29 +18,29 @@ const sections = [
 ]
 
 export function SampleSite() {
-  const [signedIn, setSignedIn] = useState(() => sessionStorage.getItem(sessionKey) === 'active')
+  const [session, setSession] = useState(undefined)
+  const [signOutError, setSignOutError] = useState('')
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-  function signIn() {
-    sessionStorage.setItem(sessionKey, 'active')
-    setSignedIn(true)
-  }
-  function signOut() {
-    sessionStorage.removeItem(sessionKey)
+
+  useEffect(() => {
+    if (!supabase) return undefined
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function signOut() {
+    setSignOutError('')
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    if (error) {
+      setSignOutError('Sign-out could not be completed. Try again.')
+      return
+    }
     setMobileOpen(false)
-    setSignedIn(false)
   }
 
-  if (!signedIn) return <main className="sample-login">
-    <section aria-labelledby="sample-sign-in">
-      <span className="brand-mark" aria-hidden="true"><span>p</span></span>
-      <p>PeoplePulse</p>
-      <h1 id="sample-sign-in">Sign in to the sample dashboard</h1>
-      <p>Explore fictional HR reports with a sample session. No password is required.</p>
-      <button className="stage-button" type="button" onClick={signIn}>Sign in to sample dashboard</button>
-      <a href={originalSite}>Go to organization sign-in</a>
-    </section>
-  </main>
+  if (supabase && session === undefined) return <main className="sample-login"><p role="status">Checking your PeoplePulse session…</p></main>
+  if (!session) return <Login onAuthenticated={setSession} passwordResetUrl={originalSite} />
 
   const CollapseIcon = collapsed ? PanelLeftOpen : PanelLeftClose
   return <div className="standalone-executive sample-shell" data-collapsed={collapsed} data-menu-open={mobileOpen}>
@@ -62,6 +64,7 @@ export function SampleSite() {
         <h1>Executive dashboard</h1>
         <button className="sample-logout" type="button" onClick={signOut}><LogOut size={16} aria-hidden="true" /> Sign out</button>
       </header>
+      {signOutError && <p role="alert">{signOutError}</p>}
       <div className="page-content"><ExecutiveSamplePreview /></div>
     </main>
   </div>
