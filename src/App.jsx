@@ -17,7 +17,8 @@ import { inspectImportBatch, submitImportBatch, transitionImportBatch } from './
 const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
 const ExecutiveDashboard = lazy(() => import('./components/ExecutiveDashboard'))
-const ExecutiveSamplePreview = __EXECUTIVE_SAMPLE_ALLOWED__ && import.meta.env.VITE_EXECUTIVE_SAMPLE_MODE === 'true'
+const executiveSampleMode = import.meta.env.VITE_EXECUTIVE_SAMPLE_MODE
+const ExecutiveSamplePreview = __EXECUTIVE_SAMPLE_ALLOWED__ && (executiveSampleMode === 'true' || (import.meta.env.DEV && executiveSampleMode !== 'false'))
   ? lazy(() => import('./components/ExecutiveSamplePreview')) : null
 const ReportsCenter = lazy(() => import('./components/ReportsCenter'))
 const PlanningModules = lazy(() => import('./components/PlanningModules'))
@@ -103,7 +104,7 @@ function App() {
   const [organization, setOrganization] = useState('All organizations')
   const [projectCostBasis, setProjectCostBasis] = useState('hybrid')
   const [incrementBandLimits, setIncrementBandLimits] = useState(DEFAULT_INCREMENT_BAND_LIMITS)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
   const previousAuthStatus = useRef(authStatus)
   useEffect(() => {
@@ -202,7 +203,9 @@ function App() {
   }), [permissionPages, accessProfile, allowedReportKeys])
   const activeView = availablePages.includes(activePage) ? activePage : availablePages[0] || 'executive'
   const [executiveSampleSelected, setExecutiveSampleSelected] = useState(true)
-  const [filtersExpanded, setFiltersExpanded] = useState(true)
+  const [dashboardOptionsExpanded, setDashboardOptionsExpanded] = useState(false)
+  const [sampleFilterCount, setSampleFilterCount] = useState(0)
+  const mobileMenuButton = useRef(null)
   const showExecutiveSample = activeView === 'executive' && ExecutiveSamplePreview && executiveSampleSelected
   const pageDepartmentScope = useMemo(() => authenticatedAccessReady
     ? getDepartmentScope(accessProfile, permissionsForPage(activeView, allowedReportKeys))
@@ -429,6 +432,20 @@ function App() {
   }
 
   const visibleDepartmentOptions = pageDepartmentScope ?? departmentOptions
+  const organizationOptions = ['All organizations', ...(liveWorkspaceState.workspace?.organizations || []).map((row) => row.organization_name)]
+  const selectOrganization = (value) => { setOrganization(value); setCompany('All companies') }
+  const showReportingFilters = !showExecutiveSample && activeView !== 'dataImport'
+    && (currentStages.employeeMaster?.sampleOnly || importReadiness.ready || planningPage || employeeMasterPage || activeView === 'dataQuality')
+  const activeFilterCount = showExecutiveSample ? sampleFilterCount : showReportingFilters ? [
+    reportingMonth !== (importedMonths.at(-1) || '2025-12'),
+    Number(reportingDate.slice(-2)) !== lastDayOfMonth,
+    financialYearStartMonth !== 4,
+    dataSource === 'live' && organization !== 'All organizations',
+    department !== 'All departments' && effectiveDepartment === department,
+    effectiveCompany !== 'All companies',
+    location !== 'All locations',
+    employmentType !== 'All employment types',
+  ].filter(Boolean).length : 0
 
   const signOut = async () => {
     setAuthActionError('')
@@ -504,32 +521,64 @@ function App() {
         collapsed={collapsed}
         onToggle={() => setCollapsed((value) => !value)}
         mobileOpen={mobileOpen}
-        onClose={() => setMobileOpen(false)}
+        onClose={() => { if (mobileOpen) mobileMenuButton.current?.focus(); setMobileOpen(false) }}
         availablePages={availablePages}
+        organization={organization}
+        organizationOptions={dataSource === 'live' ? organizationOptions : undefined}
+        onOrganizationChange={selectOrganization}
       />
       <main className={`main-content ${collapsed ? 'sidebar-collapsed' : ''}`}>
         <header className="topbar">
-          <button className="mobile-menu icon-button" aria-label="Open menu" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <div className="breadcrumb"><span>People analytics</span><i>/</i><b>{title}</b></div>
+          <button ref={mobileMenuButton} className="mobile-menu icon-button" aria-label="Open menu" aria-controls="workspace-sidebar" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
+          <h1 className="dashboard-title">{title}</h1>
           <div className="topbar-right">
-            {!showExecutiveSample && <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}{canImport && <option value="imported">Local import preview</option>}</select></label>}
-            {activeView === 'executive' && ExecutiveSamplePreview && <button type="button" className="help-button" onClick={() => setExecutiveSampleSelected(!executiveSampleSelected)}>{showExecutiveSample ? 'Show workspace data' : 'Show fictional sample'}</button>}
+            <button type="button" className="workspace-filter-toggle" aria-expanded={dashboardOptionsExpanded} aria-controls={showExecutiveSample ? 'dashboard-options executive-sample-options' : 'dashboard-options'}
+              aria-label={dashboardOptionsExpanded ? 'Collapse dashboard options' : 'Expand dashboard options'} aria-describedby={activeFilterCount > 0 ? 'active-filter-count' : undefined}
+              onClick={() => setDashboardOptionsExpanded((value) => !value)}>
+              <ChevronDown size={15} aria-hidden="true" />
+              {dashboardOptionsExpanded ? 'Collapse dashboard options' : 'Expand dashboard options'}
+              {activeFilterCount > 0 && <span id="active-filter-count" className="active-filter-count">{activeFilterCount} active</span>}
+            </button>
+            <span className="workspace-source-indicator">{showExecutiveSample ? 'Fictional preview' : dataSource === 'live' ? 'Live data' : 'Local preview'}</span>
+            {activeView === 'executive' && ExecutiveSamplePreview && <button type="button" className="workspace-filter-toggle" onClick={() => setExecutiveSampleSelected((selected) => !selected)}>{showExecutiveSample ? 'Show workspace data' : 'Show fictional sample'}</button>}
             <span className="data-badge staging-badge"><i /> {showExecutiveSample ? 'Fictional sample preview' : dataSource === 'live' ? hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS data' : 'Local preview'}</span>
-            <NotificationsCenter items={notificationItems} onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
-            <HelpCenter onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
-            <div className="user-avatar">{(authSession?.user?.email || 'U').slice(0, 1).toUpperCase()}</div>
+            <div className="user-avatar" role="img" aria-label={authSession?.user?.email || 'Signed in'} title={authSession?.user?.email || 'Signed in'}>{(authSession?.user?.email || 'U').slice(0, 1).toUpperCase()}</div>
             <div className="user-copy"><strong>{authSession?.user?.email || 'Signed in'}</strong><small>{accessProfile?.roleLabel || 'Authenticated account'}</small></div>
             {authActionError && <span className="auth-action-error" role="alert">{authActionError}</span>}
             <button className="logout-button" onClick={signOut} aria-label="Sign out"><LogOut size={15} /><span>Sign out</span></button>
           </div>
         </header>
         <div className="page-content">
-          <div className="page-header">
-            <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {showExecutiveSample ? 'FICTIONAL SAMPLE PREVIEW' : activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><h1>{title}</h1><p>{subtitle}</p></div>
-            {!showExecutiveSample && <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>}
-          </div>
+          <section id="dashboard-options" aria-label="Dashboard options" hidden={!dashboardOptionsExpanded}>
+            <div className="page-header">
+              <div><div className="eyebrow">PEOPLE PULSE <span>Â·</span> {showExecutiveSample ? 'FICTIONAL SAMPLE PREVIEW' : activeView === 'dataImport' ? 'DATA IMPORT' : dataSource === 'live' ? 'LIVE DATA' : dataSource === 'imported' ? 'LOCAL PREVIEW' : monthLabel.toUpperCase()}</div><strong className="dashboard-intro-title" aria-hidden="true">{title}</strong><p>{subtitle}</p></div>
+              {!showExecutiveSample && <div className="page-header-actions"><span className="updated-note" title={displayedDataTimestamp ? `${displayedDataTimestamp.context}: ${displayedDataTimestamp.label}` : 'No imported data has been staged in this tab.'}><span className="status-dot" />{displayedDataTimestamp ? <>{displayedDataTimestamp.context} · <time dateTime={displayedDataTimestamp.dateTime}>{displayedDataTimestamp.label}</time></> : 'No imported data staged'}</span></div>}
+            </div>
+            <div className="dashboard-secondary-controls">
+              {!showExecutiveSample && <label className="topbar-source"><span>Source</span><select value={dataSource} onChange={(event) => changeDataSource(event.target.value)} aria-label="Dashboard data source">{authenticated && <option value="live">Live organization data</option>}{canImport && <option value="imported">Local import preview</option>}</select></label>}
+              <NotificationsCenter items={notificationItems} onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
+              <HelpCenter onNavigate={(page) => { if (availablePages.includes(page)) setActivePage(page) }} />
+            </div>
+            {showReportingFilters && (
+            <section className="workspace-filters" aria-label="Reporting filters">
+            <div className="filter-bar">
+              <FilterSelect label="Month" icon={CalendarDays} value={reportingMonth} options={reportingMonths} onChange={updateMonth} />
+              <FilterSelect label="Financial year starts" icon={CalendarDays} value={financialYearStartMonth} options={financialYearOptions} onChange={(value) => setFinancialYearStartMonth(Number(value))} />
+              <DateFilter value={reportingDate} onChange={updateDate} min={dateMin} max={dateMax} />
+              <span className="filter-divider" />
+              {dataSource === 'live' && <FilterSelect label="Organization" value={organization} options={organizationOptions} onChange={selectOrganization} />}
+              <FilterSelect label="Department" value={effectiveDepartment} options={pageDepartmentScope ? visibleDepartmentOptions : ['All departments', ...visibleDepartmentOptions]} onChange={setDepartment} />
+              <FilterSelect label="Company" value={effectiveCompany} options={companyOptions} onChange={setCompany} />
+              <FilterSelect label="Location" icon={MapPin} value={location} options={['All locations', ...locationOptions]} onChange={setLocation} />
+              <FilterSelect label="Employment type" value={employmentType} options={['All employment types', ...employmentOptions]} onChange={setEmploymentType} />
+              <button type="button" className="filter-reset" onClick={resetFilters}>Reset filters</button>
+              <span className="filter-result"><b>{activeView === 'dataQuality' ? Object.keys(stagedImports).length : planningPage ? planningRecordCount : employeeMasterPage ? employeeDirectoryRows.length : employees.length}</b> {activeView === 'dataQuality' ? 'staged categories' : planningPage ? 'planning records' : 'employees'}</span>
+            </div>
+            </section>
+            )}
+          </section>
           {showExecutiveSample ? <AppErrorBoundary moduleTitle={title}>
-            <Suspense fallback={<div className="source-mode-empty">Loading Executive sample preview…</div>}><ExecutiveSamplePreview /></Suspense>
+            <Suspense fallback={<div className="source-mode-empty">Loading Executive sample preview…</div>}><ExecutiveSamplePreview optionsExpanded={dashboardOptionsExpanded} onFilterCountChange={setSampleFilterCount} /></Suspense>
           </AppErrorBoundary> : activeView === 'dataImport' ? <Suspense fallback={<div className="source-mode-empty">Loading Data Import Centre…</div>}><DataImportCenter dataSource={dataSource} onDataSourceChange={changeDataSource} stagedImports={stagedImports} setStagedImports={setStagedImports} importHistory={importHistory} importRollback={importRollback} onImportStaged={recordImportStaging} onRollback={rollbackLastImport} onStagedRemoved={discardRollbackForCategory} liveImportsEnabled={liveImportsEnabled} databaseReady={liveImportsEnabled && dataSource === 'live' && currentLiveWorkspaceStatus === 'ready' && authenticatedAccessReady && hasPermission(accessProfile, 'imports.write') && hasPermission(accessProfile, 'imports.read')} databaseCompanies={liveWorkspaceState.workspace?.companies || []} databaseWorkspace={liveWorkspaceState.workspace} databaseBatches={liveWorkspaceState.workspace?.rowsByTable?.batches || []} databasePermissions={accessProfile?.permissions || {}} onSubmitDatabase={submitDatabaseImport} onTransitionBatch={transitionDatabaseBatch} onInspectBatch={inspectDatabaseBatch} /></Suspense> : !currentStages.employeeMaster?.sampleOnly && !importReadiness.ready && !planningPage && !employeeMasterPage && activeView !== 'dataQuality' ? (
             <section className="source-mode-empty">
               <div className="source-mode-icon"><Database size={22} /></div>
@@ -541,27 +590,6 @@ function App() {
               {dataSource !== 'live' && <button type="button" className="stage-button" onClick={() => setActivePage('dataImport')}>Open Data Import</button>}
             </section>
           ) : <>
-          <section className="workspace-filters" aria-label="Reporting filters">
-            <div className="workspace-filter-heading">
-              <button type="button" className="workspace-filter-toggle" aria-expanded={filtersExpanded} aria-controls="workspace-filter-controls" onClick={() => setFiltersExpanded(!filtersExpanded)}>
-                <ChevronDown size={15} aria-hidden="true" /> {filtersExpanded ? 'Hide filters' : 'Show filters'}
-              </button>
-              {!filtersExpanded && <span className="workspace-filter-period"><time dateTime={reportingDate}>{reportingDate}</time>{effectiveCompany !== 'All companies' && <> · {effectiveCompany}</>}</span>}
-              <span className="filter-result"><b>{activeView === 'dataQuality' ? Object.keys(stagedImports).length : planningPage ? planningRecordCount : employeeMasterPage ? employeeDirectoryRows.length : employees.length}</b> {activeView === 'dataQuality' ? 'staged categories' : planningPage ? 'planning records' : 'employees'}</span>
-            </div>
-          <div id="workspace-filter-controls" className="filter-bar" hidden={!filtersExpanded}>
-            <FilterSelect label="Month" icon={CalendarDays} value={reportingMonth} options={reportingMonths} onChange={updateMonth} />
-            <FilterSelect label="Financial year starts" icon={CalendarDays} value={financialYearStartMonth} options={financialYearOptions} onChange={(value) => setFinancialYearStartMonth(Number(value))} />
-            <DateFilter value={reportingDate} onChange={updateDate} min={dateMin} max={dateMax} />
-            <span className="filter-divider" />
-            {dataSource === 'live' && <FilterSelect label="Organization" value={organization} options={['All organizations', ...(liveWorkspaceState.workspace?.organizations || []).map((row) => row.organization_name)]} onChange={(value) => { setOrganization(value); setCompany('All companies') }} />}
-            <FilterSelect label="Department" value={effectiveDepartment} options={pageDepartmentScope ? visibleDepartmentOptions : ['All departments', ...visibleDepartmentOptions]} onChange={setDepartment} />
-            <FilterSelect label="Company" value={effectiveCompany} options={companyOptions} onChange={setCompany} />
-            <FilterSelect label="Location" icon={MapPin} value={location} options={['All locations', ...locationOptions]} onChange={setLocation} />
-            <FilterSelect label="Employment type" value={employmentType} options={['All employment types', ...employmentOptions]} onChange={setEmploymentType} />
-            <button type="button" className="filter-reset" onClick={resetFilters}>Reset filters</button>
-          </div>
-          </section>
           {dataSource === 'live' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>{hasSampleData ? TEMPORARY_SAMPLE_DATA : 'Live RLS-backed data'}</b>{hasSampleData ? ' ? fictional ADTL records. Do not use these figures as real HR or payroll data.' : ' ? records are scoped to the authenticated session.'}</span></div> : employeeMasterPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local Employee Master preview</b> — not published to the database.</span></div> : planningPage && dataSource === 'imported' ? <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Local planning preview</b> — not published to the database.</span></div> : activeView === 'dataQuality' ? null : <div className="synthetic-banner imported-source-banner"><span className="banner-shield"><Check size={14} /></span><span><b>Imported reporting period verified</b> — only staged imported sources are shown. Trend points for incomplete historical periods are omitted. {!importedModel.completeness.employeeHistory ? 'Past-period department, location, and employment filters use roster attributes until a complete Employee History is staged.' : 'Effective-dated Employee History is applied to past-period workforce attributes.'}{importReadiness.metrics.payroll.missingAnnualCtcCount > 0 ? ' Annual CTC is shown as unavailable where it was not supplied.' : ''}</span></div>}
           {employees.length === 0 && !employeeMasterPage && activeView !== 'dataQuality' && <div className="empty-filter-state"><Search size={18} /><div><strong>No employees in this selection</strong><p>{dataSource === 'live' ? 'No published employee rows are visible for this organization, company, and reporting period.' : 'No local preview rows match the selected filters.'}</p></div></div>}
           <AppErrorBoundary key={activeView} moduleTitle={title}>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ExecutiveDashboard from './ExecutiveDashboard'
 import { getExecutiveSample, SAMPLE_FILTERS, SAMPLE_MONTHS, SAMPLE_NOTICE, SAMPLE_VERSION } from '../data/executiveSample'
 import { serializeCsv } from '../data/csv'
@@ -16,7 +16,7 @@ function saveCsv(rows) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
-export default function ExecutiveSamplePreview() {
+export default function ExecutiveSamplePreview({ optionsExpanded = true, onFilterCountChange }) {
   const [financialYearStartMonth, setFinancialYearStartMonth] = useState(1)
   const [month, setMonth] = useState('2025-12')
   const [date, setDate] = useState('')
@@ -24,6 +24,8 @@ export default function ExecutiveSamplePreview() {
   const [exportError, setExportError] = useState('')
   const [exporting, setExporting] = useState(false)
   const sample = useMemo(() => getExecutiveSample(month, date, filters, financialYearStartMonth), [month, date, filters, financialYearStartMonth])
+  const filterCount = Object.values(filters).filter(Boolean).length + Number(month !== '2025-12') + Number(!sample.monthEnd) + Number(financialYearStartMonth !== 1)
+  useEffect(() => { onFilterCountChange?.(filterCount) }, [filterCount, onFilterCountChange])
   const { current, history, selectedDate } = sample
   const metrics = {
     headcount: { complete: true, closing: current.headcount, joiners: current.joiners, exits: current.exits, attritionRate: current.attrition, activeEmployees: current.active },
@@ -81,7 +83,7 @@ export default function ExecutiveSamplePreview() {
   }
   return <section id="executive-sample-preview" className="exec-sample-preview" aria-label="Executive sample preview">
     <div className="exec-sample-notice"><strong>{SAMPLE_NOTICE}</strong><span>{SAMPLE_VERSION} · Fictional records only</span></div>
-    <div className="exec-sample-controls">
+    <div id="executive-sample-options" className="exec-sample-controls" hidden={!optionsExpanded}>
       <label>Month<select aria-label="Month" value={month} onChange={(event) => { setMonth(event.target.value); setDate('') }}>{SAMPLE_MONTHS.map((value) => <option key={value}>{value}</option>)}</select></label>
       <label>As of date<input aria-label="As of date" type="date" value={selectedDate} min={month + '-01'} max={month + '-' + new Date(Date.UTC(2025, Number(month.slice(-2)), 0)).getUTCDate()} onChange={(event) => setDate(event.target.value)} /></label>
       {Object.entries(SAMPLE_FILTERS).map(([key, values]) => <label key={key}>{filterLabels[key]}
@@ -89,6 +91,7 @@ export default function ExecutiveSamplePreview() {
       </label>)}
       <label>Reporting year starts<select aria-label="Reporting year starts" value={financialYearStartMonth} onChange={(event) => setFinancialYearStartMonth(Number(event.target.value))}>{SAMPLE_MONTHS.map((value, index) => <option value={index + 1} key={value}>{new Intl.DateTimeFormat('en-IN', { month: 'short', timeZone: 'UTC' }).format(new Date(value + '-01T00:00:00Z'))}</option>)}</select></label>
       <span className="exec-sample-period">Reporting period {month}-01 to {selectedDate}</span>
+      <button type="button" className="filter-reset" onClick={() => { setMonth('2025-12'); setDate(''); setFilters({}); setFinancialYearStartMonth(1) }}>Reset filters</button>
       {['CSV', 'Excel', 'PDF'].map((label, index) => <button type="button" className="stage-button" key={label} disabled={exporting} onClick={() => exportReport(['csv', 'xlsx', 'pdf'][index])}>{label}</button>)}
       <button type="button" className="stage-button" onClick={() => window.print()}>Print</button>
     </div>
