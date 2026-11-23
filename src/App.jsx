@@ -18,7 +18,8 @@ const DataImportCenter = lazy(() => import('./components/DataImportCenter'))
 const DashboardModules = lazy(() => import('./components/DashboardModules'))
 const ExecutiveDashboard = lazy(() => import('./components/ExecutiveDashboard'))
 const executiveSampleMode = import.meta.env.VITE_EXECUTIVE_SAMPLE_MODE
-const ExecutiveSamplePreview = __EXECUTIVE_SAMPLE_ALLOWED__ && (executiveSampleMode === 'true' || (import.meta.env.DEV && executiveSampleMode !== 'false'))
+const executiveSampleHostAllowed = __EXECUTIVE_SAMPLE_ALLOWED__ || (__EXECUTIVE_SAMPLE_HOST__ && window.location.hostname === __EXECUTIVE_SAMPLE_HOST__)
+const ExecutiveSamplePreview = executiveSampleHostAllowed && (executiveSampleMode === 'true' || (import.meta.env.DEV && executiveSampleMode !== 'false'))
   ? lazy(() => import('./components/ExecutiveSamplePreview')) : null
 const ReportsCenter = lazy(() => import('./components/ReportsCenter'))
 const PlanningModules = lazy(() => import('./components/PlanningModules'))

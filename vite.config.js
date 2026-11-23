@@ -6,8 +6,10 @@ const standaloneSample = process.env.PEOPLEPULSE_STANDALONE_SAMPLE === 'true'
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Local tests can opt in. A Vercel production build excludes the fixture even if the flag is set.
-  define: { __EXECUTIVE_SAMPLE_ALLOWED__: JSON.stringify(process.env.VERCEL_ENV !== 'production') },
+  define: {
+    __EXECUTIVE_SAMPLE_ALLOWED__: JSON.stringify(process.env.VERCEL_ENV !== 'production'),
+    __EXECUTIVE_SAMPLE_HOST__: JSON.stringify(process.env.PEOPLEPULSE_REDESIGN_SAMPLE === 'true' ? 'peoplepulse-hr-redesigned.vercel.app' : ''),
+  },
   plugins: [
     react(),
     standaloneSample && {
